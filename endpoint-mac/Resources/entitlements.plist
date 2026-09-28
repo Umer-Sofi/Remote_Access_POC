@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Not sandboxed: CGEventPost into other apps is not possible from the App Sandbox.
+       Hardened runtime needs no extra exceptions: the embedded frameworks are
+       re-signed with our own identity by build-app.sh. -->
+</dict>
+</plist>

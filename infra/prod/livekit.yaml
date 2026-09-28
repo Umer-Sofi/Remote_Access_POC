@@ -1,0 +1,34 @@
+# Production LiveKit config for the Linux VM (host networking, see docker-compose.prod.yml).
+# Differences from infra/livekit.yaml:
+#   * TURN/TLS behind Caddy on :443 (spec: TURN relay over TCP 443);
+#   * redis/webhook addresses are localhost because everything uses host networking;
+#   * public IP discovered via STUN (use_external_ip).
+port: 7880
+log_level: info
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+
+redis:
+  address: localhost:6379
+
+room:
+  auto_create: false
+  empty_timeout: 60
+  departure_timeout: 20
+
+turn:
+  enabled: true
+  domain: turn.example.com        # EDIT: must match TURN_DOMAIN in .env
+  tls_port: 5349                  # Caddy terminates TLS on :443 and forwards here
+  external_tls: true
+  udp_port: 3478
+  relay_range_start: 30000
+  relay_range_end: 40000
+
+webhook:
+  api_key: poc-key
+  urls:
+    - http://localhost:8080/livekit/webhook

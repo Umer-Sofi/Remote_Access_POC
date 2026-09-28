@@ -1,0 +1,22 @@
+{
+  "_comment": "Cases both endpoint clients must pass. px = min(W-1, floor(clamp(x,0,1) * W)).",
+  "coords": [
+    { "x": 0.0,    "y": 0.0,    "w": 1920, "h": 1080, "px": 0,    "py": 0 },
+    { "x": 1.0,    "y": 1.0,    "w": 1920, "h": 1080, "px": 1919, "py": 1079 },
+    { "x": 0.5,    "y": 0.5,    "w": 1920, "h": 1080, "px": 960,  "py": 540 },
+    { "x": 0.4212, "y": 0.6310, "w": 1920, "h": 1080, "px": 808,  "py": 681 },
+    { "x": -0.2,   "y": 1.7,    "w": 1440, "h": 900,  "px": 0,    "py": 899 },
+    { "x": 0.25,   "y": 0.75,   "w": 1512, "h": 982,  "px": 378,  "py": 736 }
+  ],
+  "messages": [
+    { "raw": "{\"t\":\"mm\",\"x\":0.5,\"y\":0.25}",                               "valid": true },
+    { "raw": "{\"t\":\"mb\",\"button\":\"left\",\"down\":true}",                  "valid": true },
+    { "raw": "{\"t\":\"mw\",\"dx\":0,\"dy\":-120}",                               "valid": true },
+    { "raw": "{\"t\":\"kb\",\"code\":\"KeyA\",\"down\":true,\"mods\":[\"ctrl\"]}", "valid": true },
+    { "raw": "{\"t\":\"cmd\",\"name\":\"ctrl-alt-del\"}",                         "valid": true },
+    { "raw": "{\"t\":\"scope\",\"value\":\"view\"}",                              "valid": true },
+    { "raw": "{\"t\":\"mb\",\"button\":\"thumb\",\"down\":true}",                 "valid": false },
+    { "raw": "{\"t\":\"zz\"}",                                                   "valid": false },
+    { "raw": "not json",                                                        "valid": false }
+  ]
+}

@@ -1,0 +1,31 @@
+[package]
+name = "remote-access-endpoint"
+version = "0.1.0"
+edition = "2021"
+description = "Windows endpoint client for the Remote Access POC (ephemeral, user context)"
+
+# Build on Windows with the MSVC toolchain:
+#   cargo build --release
+#   cargo test            # shared contract vectors (also runs on macOS/Linux)
+[dependencies]
+livekit = { version = "0.9", features = ["rustls-tls-native-roots"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_LibraryLoader",
+  "Win32_UI_HiDpi",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+lto = true
+strip = true

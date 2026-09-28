@@ -1,0 +1,47 @@
+# Internet test mode: LiveKit Cloud as SFU/TURN, broker on this machine exposed
+# through a Cloudflare quick tunnel. Start it with scripts/cloud-up.sh (it
+# passes --env-file .env.cloud and -p remote-access-cloud).
+#
+# Uses its own project name, port (8081) and database, so it can run next to the
+# local stack. Recording is OFF: LiveKit Cloud cannot write to a local folder.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: poc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: remote_access
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc -d remote_access"]
+      interval: 3s
+      retries: 20
+
+  broker:
+    build:
+      context: .
+      dockerfile: broker/Dockerfile
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://poc:${POSTGRES_PASSWORD}@postgres:5432/remote_access
+      LIVEKIT_URL: ${LIVEKIT_URL}            # wss://<project>.livekit.cloud (SDK maps to https for API calls)
+      LIVEKIT_WS_URL: ${LIVEKIT_URL}
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_URL}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      OPERATORS: ${OPERATORS}
+      ENDPOINT_SECRET: ${ENDPOINT_SECRET}
+      TARGET_ALLOWLIST: "*"
+      RECORDING_MODE: none
+      REQUIRE_RECORDING: "false"
+    ports:
+      - "127.0.0.1:8081:8080"   # local only; the internet reaches it via the tunnel
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

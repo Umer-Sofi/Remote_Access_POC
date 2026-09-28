@@ -1,0 +1,33 @@
+{
+  "name": "remote-access-broker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Session broker: operator REST API, endpoint WSS control link, LiveKit tokens, recording, audit",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p .",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p . --noEmit",
+    "fake-endpoint": "tsx tools/fake-endpoint.ts",
+    "e2e": "tsx tools/e2e.ts"
+  },
+  "dependencies": {
+    "@livekit/rtc-node": "^1.1.0",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "jose": "^6.2.12",
+    "livekit-server-sdk": "^2.19.1",
+    "pg": "^8.23.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.19.43",
+    "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

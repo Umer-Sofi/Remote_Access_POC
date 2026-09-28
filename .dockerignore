@@ -1,0 +1,7 @@
+**/node_modules
+**/dist
+recordings
+endpoint-mac
+endpoint-win
+.git
+.env

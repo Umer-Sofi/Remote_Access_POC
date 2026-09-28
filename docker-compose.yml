@@ -1,0 +1,98 @@
+# Whole server side of the POC: `docker compose up -d --build`
+# Configuration comes from .env (copy .env.example).
+#
+#   postgres  audit store (schema from infra/init.sql)
+#   redis     LiveKit <-> Egress message bus
+#   livekit   SFU + TURN
+#   egress    server-side recorder, writes to ./recordings
+#   broker    session broker (REST + WSS) and the built operator console on :8080
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: poc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: remote_access
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:5433:5432"      # local only, for psql inspection (5433 avoids clashing with a local Postgres)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc -d remote_access"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  livekit:
+    image: livekit/livekit-server:latest
+    command: ["--config", "/etc/livekit.yaml", "--node-ip", "${LIVEKIT_NODE_IP}"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    volumes:
+      - ./infra/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"                # signalling (ws) + API
+      - "7881:7881"                # ICE/TCP
+      - "7882:7882/udp"            # ICE/UDP (single-port mux)
+      - "3478:3478/udp"            # TURN/UDP
+      - "30000-30020:30000-30020/udp"  # TURN relay range
+    depends_on: [redis]
+
+  egress:
+    image: livekit/egress:latest
+    cap_add: [SYS_ADMIN]           # required by egress >= 1.7.6
+    environment:
+      EGRESS_CONFIG_BODY: |
+        api_key: ${LIVEKIT_API_KEY}
+        api_secret: ${LIVEKIT_API_SECRET}
+        ws_url: ws://livekit:7880
+        redis:
+          address: redis:6379
+        log_level: info
+        # Track egress is passthrough (no transcoding), so it is cheap. Lower the
+        # reservation so a small POC VM (2 vCPU) is not rejected as "no capacity".
+        cpu_cost:
+          track_cpu_cost: 0.5
+          room_composite_cpu_cost: 1
+          participant_cpu_cost: 1
+          track_composite_cpu_cost: 1
+    volumes:
+      - ./recordings:/out
+    depends_on: [redis, livekit]
+
+  broker:
+    build:
+      context: .
+      dockerfile: broker/Dockerfile
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://poc:${POSTGRES_PASSWORD}@postgres:5432/remote_access
+      LIVEKIT_URL: http://livekit:7880                 # broker -> LiveKit API
+      LIVEKIT_WS_URL: ws://livekit:7880                # broker's hidden audit-tap participant
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL}        # what browsers/endpoints connect to
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      OPERATORS: ${OPERATORS}
+      ENDPOINT_SECRET: ${ENDPOINT_SECRET}
+      TARGET_ALLOWLIST: ${TARGET_ALLOWLIST}
+      REQUIRE_RECORDING: ${REQUIRE_RECORDING}
+      RECORDINGS_DIR: /recordings
+      EGRESS_OUT_DIR: /out                            # path as the egress container sees it
+    volumes:
+      - ./recordings:/recordings:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+
+volumes:
+  pgdata:

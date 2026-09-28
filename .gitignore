@@ -1,0 +1,12 @@
+.env
+node_modules/
+dist/
+recordings/
+.build/
+.swiftpm/
+target/
+*.app
+.DS_Store
+transfer/
+.env.cloud
+*.tsbuildinfo

@@ -1,0 +1,24 @@
+{
+  "name": "remote-access-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Operator web console: login, target list, live view, remote control, audit history",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "livekit-client": "^2.22.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.1"
+  }
+}

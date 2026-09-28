@@ -1,0 +1,41 @@
+# One TLS listener on :443 for everything, split by SNI (layer 4), so a
+# network that only allows TCP 443 can still reach signalling, the broker AND the
+# TURN relay. Certificates are obtained automatically (Let's Encrypt): ports 80
+# and 443 must be reachable and the three DNS names must point at the VM.
+# EDIT the three example.com names (they must match .env).
+logging:
+  logs:
+    default:
+      level: INFO
+storage:
+  module: file_system
+  root: /data
+apps:
+  tls:
+    certificates:
+      automate:
+        - broker.example.com
+        - livekit.example.com
+        - turn.example.com
+  layer4:
+    servers:
+      main:
+        listen: [":443"]
+        routes:
+          - match: [{ tls: { sni: ["turn.example.com"] } }]
+            handle:
+              - handler: tls
+              - handler: proxy
+                upstreams: [{ dial: ["localhost:5349"] }]
+          - match: [{ tls: { sni: ["livekit.example.com"] } }]
+            handle:
+              - handler: tls
+                connection_policies: [{ alpn: ["http/1.1"] }]
+              - handler: proxy
+                upstreams: [{ dial: ["localhost:7880"] }]
+          - match: [{ tls: { sni: ["broker.example.com"] } }]
+            handle:
+              - handler: tls
+                connection_policies: [{ alpn: ["http/1.1"] }]
+              - handler: proxy
+                upstreams: [{ dial: ["localhost:8080"] }]

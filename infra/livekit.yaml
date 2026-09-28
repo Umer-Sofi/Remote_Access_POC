@@ -1,0 +1,46 @@
+# LiveKit server config (SFU + built-in TURN; Egress runs as a separate container).
+# API key/secret are NOT in this file: docker-compose passes them as LIVEKIT_KEYS
+# from .env so there is a single place to rotate them.
+# The public IP LiveKit advertises in ICE candidates is passed as --node-ip.
+
+port: 7880                    # WebSocket signalling + Twirp API (broker uses this)
+log_level: info
+
+rtc:
+  tcp_port: 7881              # ICE over TCP, used when UDP is blocked
+  udp_port: 7882              # single UDP port (mux) keeps firewall/docker mapping simple
+  use_external_ip: false      # we pass --node-ip explicitly instead of STUN discovery
+
+# Redis is required as soon as Egress is used: it is the message bus between
+# livekit-server and the egress workers.
+redis:
+  address: redis:6379
+
+room:
+  # Only the broker may create rooms. That guarantees every media room is created
+  # with auto-egress (recording) attached; a client holding a token for some
+  # other room name cannot create an unrecorded room.
+  auto_create: false
+  empty_timeout: 60
+  departure_timeout: 20
+
+turn:
+  enabled: true
+  udp_port: 3478
+  # Production (spec: TURN over TCP 443): set domain + tls_port 5349 and put the
+  # TLS terminator on :443 (see infra/prod/). The browser then reaches TURN over
+  # "turns:<domain>:443?transport=tcp", which looks like normal HTTPS.
+  # domain: turn.example.com
+  # tls_port: 5349
+  # external_tls: true
+  relay_range_start: 30000
+  relay_range_end: 30020
+
+# Server-observed events (participant joined/left, track published, egress
+# started/ended) are pushed to the broker, which turns them into audit rows.
+# api_key must be the key NAME from LIVEKIT_API_KEY in .env (the webhook is
+# signed with the matching secret).
+webhook:
+  api_key: poc-key
+  urls:
+    - http://broker:8080/livekit/webhook
