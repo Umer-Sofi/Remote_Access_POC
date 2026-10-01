@@ -39,7 +39,15 @@ get() { grep "^$1=" $ENV | cut -d= -f2-; }
 if [[ -z "$(get LIVEKIT_API_KEY)" || -z "$(get LIVEKIT_API_SECRET)" || "$(get LIVEKIT_URL)" == *your-project* ]]; then
   echo "Fill in LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET in $ENV first."; exit 1
 fi
-command -v cloudflared >/dev/null || { echo "Install cloudflared first:  brew install cloudflared"; exit 1; }
+# Tunnel choice: ngrok (fixed address) when NGROK_DOMAIN is set in .env.cloud,
+# otherwise a Cloudflare quick tunnel (random address each start).
+NGROK_DOMAIN=$(get NGROK_DOMAIN || true)
+if [[ -n "$NGROK_DOMAIN" ]]; then
+  command -v ngrok >/dev/null || { echo "Install ngrok first:  brew install ngrok"; exit 1; }
+  ngrok config check >/dev/null 2>&1 || { echo "Add your ngrok token:  ngrok config add-authtoken <token>"; exit 1; }
+else
+  command -v cloudflared >/dev/null || { echo "Install cloudflared first:  brew install cloudflared"; exit 1; }
+fi
 
 # 2. Stack.
 "${COMPOSE[@]}" up -d --build
@@ -51,24 +59,44 @@ if [[ -f $PIDFILE ]] && kill -0 "$(cat $PIDFILE)" 2>/dev/null; then
   echo "tunnel already running"
 else
   : > $LOG
-  nohup cloudflared tunnel --no-autoupdate --url http://localhost:8081 >> $LOG 2>&1 &
+  if [[ -n "$NGROK_DOMAIN" ]]; then
+    nohup ngrok http 8081 --url "https://$NGROK_DOMAIN" --log stdout >> $LOG 2>&1 &
+  else
+    nohup cloudflared tunnel --no-autoupdate --url http://localhost:8081 >> $LOG 2>&1 &
+  fi
   echo $! > $PIDFILE
 fi
-URL=""
-for i in $(seq 1 30); do
-  URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' $LOG | head -1 || true)
-  [[ -n "$URL" ]] && break; sleep 1
-done
-[[ -n "$URL" ]] || { echo "no tunnel URL; see $LOG"; exit 1; }
+if [[ -n "$NGROK_DOMAIN" ]]; then
+  URL="https://$NGROK_DOMAIN"
+else
+  URL=""
+  for i in $(seq 1 30); do
+    URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' $LOG | head -1 || true)
+    [[ -n "$URL" ]] && break; sleep 1
+  done
+  [[ -n "$URL" ]] || { echo "no tunnel URL; see $LOG"; exit 1; }
+fi
 for i in $(seq 1 30); do curl -sf "$URL/healthz" >/dev/null && break; sleep 2; done
-curl -sf "$URL/healthz" >/dev/null || { echo "tunnel URL not answering yet: $URL (DNS can take a minute; re-run)"; exit 1; }
+curl -sf "$URL/healthz" >/dev/null || { echo "tunnel URL not answering yet: $URL (see $LOG; re-run in a minute)"; exit 1; }
 HOST=${URL#https://}
 
-# 4. macOS client with this tunnel's address baked in.
+# 4. macOS client with this tunnel's address baked in. Rebuilt ONLY when the
+#    address changed. The app is ad-hoc signed, so a needless rebuild would make
+#    macOS see a "new app" and drop the target's Screen Recording / Accessibility
+#    grants. With a fixed ngrok address, restarts therefore keep the same app.
 SECRET=$(get ENDPOINT_SECRET) # read before cd: get() uses a relative path
-(cd endpoint-mac && BROKER="wss://$HOST/ws/endpoint" SECRET="$SECRET" scripts/build-app.sh | grep -E "^built")
-rm -f transfer/RemoteAccessEndpoint-cloud.app.zip
-ditto -c -k --keepParent endpoint-mac/build/RemoteAccessEndpoint.app transfer/RemoteAccessEndpoint-cloud.app.zip
+ZIP=transfer/RemoteAccessEndpoint-cloud.app.zip
+WANT="wss://$HOST/ws/endpoint"
+HAVE=$(unzip -p "$ZIP" RemoteAccessEndpoint.app/Contents/Resources/endpoint.json 2>/dev/null \
+       | grep -oE 'wss://[^/"]+/ws/endpoint' || true)
+if [[ "$HAVE" == "$WANT" ]]; then
+  APP_NOTE="unchanged (same address) — targets keep their current app and permissions"
+else
+  (cd endpoint-mac && BROKER="$WANT" SECRET="$SECRET" scripts/build-app.sh | grep -E "^built")
+  rm -f "$ZIP"
+  ditto -c -k --keepParent endpoint-mac/build/RemoteAccessEndpoint.app "$ZIP"
+  APP_NOTE="NEW build for $HOST — send it; targets redo the one-time permission setup"
+fi
 
 cat <<EOF
 
@@ -78,15 +106,14 @@ cat <<EOF
  Operator console:  http://localhost:8081    (or $URL)
  Login:             $(get OPERATORS | cut -d, -f1 | sed 's/:/ \/ /')
 
- Send to the target user:
-   transfer/RemoteAccessEndpoint-cloud.app.zip
+ Target app:  transfer/RemoteAccessEndpoint-cloud.app.zip
+              $APP_NOTE
 
  LiveKit Cloud webhook (optional, gives SFU-observed audit events):
    cloud.livekit.io → Settings → Webhooks → add
    $URL/livekit/webhook   (signing key: $(get LIVEKIT_API_KEY))
 
- The tunnel URL changes whenever the tunnel restarts; re-run this
- script and send the new app zip if that happens.
+ Tunnel: $([[ -n "$NGROK_DOMAIN" ]] && echo "ngrok, FIXED address — safe to restart, no new app needed" || echo "Cloudflare, address CHANGES on restart — new app needed each time")
  Stop everything:   scripts/cloud-up.sh down
 ================================================================
 EOF

@@ -23,6 +23,8 @@ mod input;
 mod stream;
 #[cfg(windows)]
 mod broker;
+#[cfg(windows)]
+mod banner;
 
 #[cfg(not(windows))]
 fn main() {
@@ -36,11 +38,8 @@ fn main() -> anyhow::Result<()> {
 }
 
 /// Always-on-top session indicator (spec §8.5 step 7, acceptance criterion 4).
-///
-/// GAP: no Windows implementation is included in this build. Until one is added
-/// (a topmost tool window with an "End session" button that ends the session),
-/// `session_indicator()` returns None and the client DECLINES every session
-/// rather than stream without a visible indicator.
+/// Implemented for Windows in `banner.rs`. If an indicator cannot be created the
+/// client DECLINES the session rather than stream without a visible indicator.
 #[allow(dead_code)]
 pub trait SessionIndicator: Send {
     fn show(&mut self, operator: &str, scope: protocol::Scope);
@@ -48,6 +47,12 @@ pub trait SessionIndicator: Send {
     fn hide(&mut self);
 }
 
+#[cfg(windows)]
+pub fn session_indicator(on_end: tokio::sync::mpsc::UnboundedSender<()>) -> Option<Box<dyn SessionIndicator>> {
+    Some(Box::new(banner::WindowsBanner::new(on_end)))
+}
+
+#[cfg(not(windows))]
 #[allow(dead_code)]
 pub fn session_indicator(_on_end: tokio::sync::mpsc::UnboundedSender<()>) -> Option<Box<dyn SessionIndicator>> {
     None

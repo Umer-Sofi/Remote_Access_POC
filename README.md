@@ -68,10 +68,11 @@ target\release\remote-access-endpoint.exe --broker ws://<server>:8080/ws/endpoin
 For a target on your LAN, set `LIVEKIT_NODE_IP` in `.env` to the server machine's LAN IP and
 `LIVEKIT_PUBLIC_URL=ws://<that-ip>:7880`, then run `docker compose up -d`.
 
-> ⚠ **Known gap:** the Windows session banner (`SessionIndicator` in `endpoint-win/src/main.rs`)
-> has no implementation yet. Until one is added the client **declines every session** and
-> reports `session_banner_unavailable`, so there is never an unindicated session. The Windows
-> client has also **not been compiled yet**; expect a round of compile fixes on first build.
+> ⚠ **Known gap:** the Windows session banner is now implemented (`endpoint-win/src/banner.rs`,
+> wired through `SessionIndicator` in `endpoint-win/src/main.rs`); if an indicator cannot be created
+> the client still **declines the session** (reports `session_banner_unavailable`), so there is
+> never an unindicated session. The Windows client has **not been compiled yet**; expect a round of
+> compile fixes on the first `cargo build` on a Windows machine.
 
 ## Production (Linux VM, TURN over TCP 443)
 
