@@ -33,6 +33,9 @@ const ID_LABEL: usize = 1002;
 const WM_APP_UPDATE: u32 = WM_APP + 1; // re-read LABEL and apply it
 const WM_APP_CLOSE: u32 = WM_APP + 2; // tear the window down
 const RED: u32 = 0x0033_29D9; // COLORREF is 0x00BBGGRR  (= #D92933)
+// Static-control style not exported by windows-sys 0.61; vertically centres the
+// label text within the control. Fixed Win32 value (winuser.h).
+const SS_CENTERIMAGE: u32 = 0x0000_0200;
 
 // One banner exists at a time, so shared UI state lives in module statics that
 // only the window procedure (on the UI thread) reads and writes.

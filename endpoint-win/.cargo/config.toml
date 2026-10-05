@@ -1,0 +1,6 @@
+# LiveKit/webrtc-sys ships prebuilt libWebRTC built against the static MSVC CRT (/MT).
+# Rust links its std against the dynamic CRT (/MD) by default, which collides with
+# libwebrtc_sys and produces LNK2005 "already defined" / LNK1169 at the final link.
+# Forcing the static CRT makes the whole binary consistent with libWebRTC.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
