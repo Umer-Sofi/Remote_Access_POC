@@ -66,7 +66,7 @@ mod win {
     use crate::stream::{Media, MediaEvent};
     use crate::{capture::Capture, consent, input::Injector, session_indicator, SessionIndicator};
     use std::time::Duration;
-    use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+    use tokio::sync::mpsc::unbounded_channel;
 
     struct Config {
         broker: String,

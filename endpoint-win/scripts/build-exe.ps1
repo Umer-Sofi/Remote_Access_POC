@@ -1,43 +1,71 @@
-# Builds the Windows endpoint and packages it into one sendable zip.
-#
-#   cd endpoint-win
-#   scripts\build-exe.ps1 -Broker wss://<your-ngrok-domain>/ws/endpoint -Secret <ENDPOINT_SECRET>
-#
-# Output: dist\remote-access-endpoint-win.zip  (the .exe + any DLLs + endpoint.json)
-# Needs: Rust (MSVC toolchain) from https://rustup.rs, plus the Visual Studio
-# C++ build tools (Desktop development with C++).
+<#
+.SYNOPSIS
+  Build the Windows endpoint in release mode and package it into a single zip
+  that a recipient can unzip and double-click, with the broker address and
+  secret baked into endpoint.json (config priority in the client is
+  CLI args -> env vars -> endpoint.json next to the exe).
+
+.EXAMPLE
+  scripts\build-exe.ps1 -Broker wss://your-domain/ws/endpoint -Secret <ENDPOINT_SECRET>
+
+.EXAMPLE
+  scripts\build-exe.ps1 -Broker wss://your-domain/ws/endpoint -Secret <SECRET> -Target demo-pc
+#>
+[CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true)][string]$Broker,
-  [Parameter(Mandatory = $true)][string]$Secret,
-  [string]$Target = ""
+    [Parameter(Mandatory = $true)][string]$Broker,
+    [Parameter(Mandatory = $true)][string]$Secret,
+    [string]$Target = ""
 )
+
 $ErrorActionPreference = "Stop"
-Set-Location (Join-Path $PSScriptRoot "..")
 
-Write-Host "Building release binary..." -ForegroundColor Cyan
-cargo build --release
+# Project root is the parent of this script's folder (endpoint-win\).
+$projectRoot = Split-Path -Parent $PSScriptRoot
+Push-Location $projectRoot
+try {
+    Write-Host "==> Building release binary (static CRT via .cargo/config.toml)..."
+    cargo build --release
+    if ($LASTEXITCODE -ne 0) { throw "cargo build failed (exit code $LASTEXITCODE)" }
 
-$bin = "target\release\remote-access-endpoint.exe"
-if (!(Test-Path $bin)) { throw "build did not produce $bin" }
+    $exe = Join-Path $projectRoot "target\release\remote-access-endpoint.exe"
+    if (-not (Test-Path $exe)) { throw "Built exe not found at $exe" }
 
-# Fresh dist folder with the exe, any sibling DLLs, and the baked-in config.
-$dist = "dist\remote-access-endpoint"
-if (Test-Path "dist") { Remove-Item "dist" -Recurse -Force }
-New-Item -ItemType Directory -Path $dist | Out-Null
-Copy-Item $bin $dist
-Get-ChildItem "target\release\*.dll" -ErrorAction SilentlyContinue | Copy-Item -Destination $dist
+    $dist  = Join-Path $projectRoot "dist"
+    $stage = Join-Path $dist "remote-access-endpoint-win"
+    if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+    New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-# endpoint.json: the broker address + shared secret the exe reads on launch.
-$cfg = @{ broker = $Broker; secret = $Secret }
-if ($Target -ne "") { $cfg.target = $Target }
-$cfg | ConvertTo-Json -Compress | Set-Content -Path (Join-Path $dist "endpoint.json") -Encoding UTF8
+    Write-Host "==> Staging exe + config..."
+    Copy-Item $exe $stage
 
-$zip = "dist\remote-access-endpoint-win.zip"
-if (Test-Path $zip) { Remove-Item $zip }
-Compress-Archive -Path "$dist\*" -DestinationPath $zip
+    # Bundle any DLLs sitting next to the exe. A static build produces none,
+    # but copy them if present so the package is always self-contained.
+    Get-ChildItem (Join-Path $projectRoot "target\release\*.dll") -ErrorAction SilentlyContinue |
+        ForEach-Object { Copy-Item $_.FullName $stage }
 
-Write-Host ""
-Write-Host "Built and packaged:" -ForegroundColor Green
-Write-Host "  Run here:  $bin"
-Write-Host "  Send this: $zip"
-Write-Host "  (the target user unzips it and runs remote-access-endpoint.exe)"
+    # endpoint.json with broker + secret (+ optional target) baked in.
+    # IMPORTANT: write BOM-less UTF-8. Windows PowerShell 5.1's
+    # `Set-Content -Encoding utf8` prepends a UTF-8 BOM (EF BB BF), which
+    # serde_json cannot parse, so the client would silently fail to load config.
+    $cfg = [ordered]@{ broker = $Broker; secret = $Secret }
+    if ($Target) { $cfg["target"] = $Target }
+    $json = $cfg | ConvertTo-Json
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stage "endpoint.json"),
+        $json,
+        (New-Object System.Text.UTF8Encoding $false))
+
+    $zip = Join-Path $dist "remote-access-endpoint-win.zip"
+    if (Test-Path $zip) { Remove-Item -Force $zip }
+    Write-Host "==> Compressing..."
+    Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip
+
+    $sizeMB = [math]::Round((Get-Item $zip).Length / 1MB, 2)
+    Write-Host ""
+    Write-Host "Package contents: remote-access-endpoint.exe + endpoint.json ($sizeMB MB zip)"
+    Write-Host "Send this: dist\remote-access-endpoint-win.zip"
+}
+finally {
+    Pop-Location
+}
