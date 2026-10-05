@@ -371,5 +371,4 @@ http://localhost:8080 (login `alice` / `alice-pass`), run a session, and play it
 - **Text-legibility and latency thresholds** — mitigations are built; the *measured* acceptance tests
   need the production VM and a restricted (443-only) network.
 
-For the full production plan and cost estimates, and the file-by-file breakdown, see the other docs
-in this folder.
+
