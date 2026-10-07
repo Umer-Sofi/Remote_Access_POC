@@ -7,10 +7,17 @@ description = "Windows endpoint client for the Remote Access POC (ephemeral, use
 # Build on Windows with the MSVC toolchain:
 #   cargo build --release
 #   cargo test            # shared contract vectors (also runs on macOS/Linux)
+# TLS roots are BUNDLED into the binary (webpki-roots = the Mozilla root set),
+# not read from the machine's certificate store. Native-roots failed on some
+# Windows machines ("invalid peer certificate: UnknownIssuer") because the OS
+# store wasn't loaded; bundled roots make the exe self-sufficient on any machine.
+# (Note: this trusts standard public CAs like Let's Encrypt — which ngrok and
+# LiveKit Cloud use — but not a corporate TLS-interception root. For networks
+# that MITM TLS, switch to rustls-platform-verifier instead.)
 [dependencies]
-livekit = { version = "0.9", features = ["rustls-tls-native-roots"] }
+livekit = { version = "0.9", features = ["rustls-tls-webpki-roots"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
-tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
