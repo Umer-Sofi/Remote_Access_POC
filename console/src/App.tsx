@@ -1,11 +1,34 @@
-// Operator console shell: login → target list → session, plus audit history and
-// the M1 smoke test. Deliberately no router library; four views is not worth one.
-import { useEffect, useState } from 'react';
+// Operator console shell, styled as the "GefyLink" dashboard. Login → sidebar
+// dashboard (Targets, Audit history, Session recordings, SFU smoke test, Settings).
+// All data comes from the existing broker API; no router library (few views).
+import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError, type AuditEntry, type Scope, type SessionRow, type Target } from './api';
 import { Session } from './Session';
 import { Smoke } from './Smoke';
 
-type View = 'targets' | 'history' | 'smoke';
+type View = 'targets' | 'history' | 'recordings' | 'smoke' | 'settings';
+
+const NAV: { id: View; label: string; icon: string }[] = [
+  { id: 'targets', label: 'Targets', icon: '🖥️' },
+  { id: 'history', label: 'Audit history', icon: '🕑' },
+  { id: 'recordings', label: 'Session recordings', icon: '🎥' },
+  { id: 'smoke', label: 'SFU smoke test', icon: '🛡️' },
+  { id: 'settings', label: 'Settings', icon: '⚙️' },
+];
+
+const PLATFORM = {
+  mac: { label: 'macOS', icon: '', cls: 'mac' },
+  win: { label: 'Windows', icon: '⊞', cls: 'win' },
+} as const;
+
+function timeAgo(iso?: string) {
+  if (!iso) return '—';
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return `${Math.floor(s / 86400)} d ago`;
+}
 
 export function App() {
   const [user, setUser] = useState<string | null | undefined>(undefined);
@@ -21,23 +44,56 @@ export function App() {
   if (sessionId) return <Session sessionId={sessionId} onExit={() => setSessionId(undefined)} />;
 
   return (
-    <div className="app">
-      <header>
-        <h1>Remote Access</h1>
-        <nav>
-          {(['targets', 'history', 'smoke'] as View[]).map((v) => (
-            <button key={v} className={view === v ? 'active' : ''} onClick={() => setView(v)}>
-              {v === 'targets' ? 'Targets' : v === 'history' ? 'Audit history' : 'SFU smoke test'}
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div className="brand-mark">🔗</div>
+          <div>
+            <div className="brand-name">GefyLink</div>
+            <div className="brand-sub">Secure Remote Access</div>
+          </div>
+        </div>
+        <nav className="side-nav">
+          {NAV.map((n) => (
+            <button key={n.id} className={view === n.id ? 'active' : ''} onClick={() => setView(n.id)}>
+              <span className="nav-icon">{n.icon}</span>
+              {n.label}
             </button>
           ))}
         </nav>
-        <span className="spacer" />
-        <span className="muted">{user}</span>
-        <button onClick={() => api.logout().then(() => setUser(null))}>Log out</button>
-      </header>
-      {view === 'targets' && <Targets onStart={setSessionId} />}
-      {view === 'history' && <History />}
-      {view === 'smoke' && <Smoke />}
+        <div className="sys-status">
+          <span className="dot ok" />
+          <div>
+            <div className="sys-title">System Online</div>
+            <div className="sys-sub">All services healthy</div>
+          </div>
+        </div>
+      </aside>
+
+      <div className="main">
+        <header className="topbar">
+          <div className="search">
+            <span className="search-icon">🔍</span>
+            <input placeholder="Search targets by name, host, user…" disabled />
+            <span className="kbd">⌘ K</span>
+          </div>
+          <span className="spacer" />
+          <button className="icon-btn" title="Notifications">🔔</button>
+          <div className="user-chip">
+            <span className="avatar">{user[0]?.toUpperCase()}</span>
+            <span>{user}</span>
+            <button className="linkish" onClick={() => api.logout().then(() => setUser(null))}>Log out</button>
+          </div>
+        </header>
+
+        <div className="content">
+          {view === 'targets' && <Targets onStart={setSessionId} />}
+          {view === 'history' && <History />}
+          {view === 'recordings' && <Recordings />}
+          {view === 'smoke' && <div className="card"><Smoke /></div>}
+          {view === 'settings' && <Settings user={user} />}
+        </div>
+      </div>
     </div>
   );
 }
@@ -55,13 +111,49 @@ function Login({ onLogin }: { onLogin: (u: string) => void }) {
     }
   };
   return (
-    <form className="login" onSubmit={submit}>
-      <h1>Remote Access</h1>
-      <input placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
-      <input placeholder="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-      <button type="submit">Log in</button>
-      {error && <div className="error">{error}</div>}
-    </form>
+    <div className="login-bg">
+      <form className="login card" onSubmit={submit}>
+        <div className="brand login-brand">
+          <div className="brand-mark">🔗</div>
+          <div>
+            <div className="brand-name">GefyLink</div>
+            <div className="brand-sub">Secure Remote Access</div>
+          </div>
+        </div>
+        <input placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
+        <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <button className="primary" type="submit">Log in</button>
+        {error && <div className="error">{error}</div>}
+      </form>
+    </div>
+  );
+}
+
+const FEATURES = [
+  { icon: '🔒', title: 'End-to-end encryption' },
+  { icon: '🛡️', title: 'Audit every session' },
+  { icon: '🖥️', title: 'Cross-platform access' },
+  { icon: '👥', title: 'Role-based permissions' },
+];
+
+function Hero() {
+  return (
+    <div className="hero card">
+      <div className="hero-text">
+        <div className="hero-eyebrow">SECURE · CONNECT · WORK · ANYWHERE</div>
+        <h1 className="hero-title">Remote <span>Access</span></h1>
+        <p className="hero-sub">Connect to your devices securely from anywhere.</p>
+        <div className="feature-row">
+          {FEATURES.map((f) => (
+            <div className="feature" key={f.title}>
+              <span className="feature-icon">{f.icon}</span>
+              <span>{f.title}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="hero-art">💻</div>
+    </div>
   );
 }
 
@@ -71,6 +163,10 @@ function Targets({ onStart }: { onStart: (id: string) => void }) {
   const [reason, setReason] = useState('');
   const [scope, setScope] = useState<Scope>('control');
   const [error, setError] = useState<string>();
+  const [q, setQ] = useState('');
+  const [platform, setPlatform] = useState<'all' | 'mac' | 'win'>('all');
+  const [status, setStatus] = useState<'all' | 'online' | 'busy'>('all');
+  const [showAdd, setShowAdd] = useState(false);
 
   // "Connectable targets" = endpoints holding a live WSS link right now (spec §8.1).
   useEffect(() => {
@@ -89,32 +185,108 @@ function Targets({ onStart }: { onStart: (id: string) => void }) {
     }
   };
 
+  const filtered = useMemo(() => targets.filter((t) => {
+    if (platform !== 'all' && t.platform !== platform) return false;
+    if (status === 'online' && t.busy) return false;
+    if (status === 'busy' && !t.busy) return false;
+    const hay = `${t.id} ${t.hostname} ${t.platform}`.toLowerCase();
+    return hay.includes(q.toLowerCase());
+  }), [targets, q, platform, status]);
+
   return (
-    <div className="panel">
-      <div className="row">
-        <input className="grow" placeholder="Reason (shown to the user in the consent prompt)" value={reason} onChange={(e) => setReason(e.target.value)} />
-        <select value={scope} onChange={(e) => setScope(e.target.value as Scope)}>
-          <option value="control">View + control</option>
-          <option value="view">View only</option>
-        </select>
+    <>
+      <Hero />
+      <div className="card">
+        <div className="card-head">
+          <div className="card-head-left">
+            <span className="card-icon">🖥️</span>
+            <div>
+              <h2>Targets</h2>
+              <p className="muted">Manage and connect to your remote devices</p>
+            </div>
+          </div>
+          <button className="primary" onClick={() => setShowAdd(true)}>+ Add Target</button>
+        </div>
+
+        <div className="toolbar-row">
+          <div className="search grow">
+            <span className="search-icon">🔍</span>
+            <input placeholder="Search targets…" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <select value={platform} onChange={(e) => setPlatform(e.target.value as any)}>
+            <option value="all">All platforms</option>
+            <option value="mac">macOS</option>
+            <option value="win">Windows</option>
+          </select>
+          <select value={status} onChange={(e) => setStatus(e.target.value as any)}>
+            <option value="all">All status</option>
+            <option value="online">Online</option>
+            <option value="busy">In session</option>
+          </select>
+        </div>
+
+        <div className="consent-bar">
+          <input className="grow" placeholder="Reason (shown to the user in the consent prompt)" value={reason} onChange={(e) => setReason(e.target.value)} />
+          <select value={scope} onChange={(e) => setScope(e.target.value as Scope)}>
+            <option value="control">View + control</option>
+            <option value="view">View only</option>
+          </select>
+        </div>
+
+        {error && <div className="error">{error}</div>}
+
+        <table className="data">
+          <thead><tr><th>Target</th><th>Platform</th><th>Host</th><th>Status</th><th>Last seen</th><th>Actions</th></tr></thead>
+          <tbody>
+            {filtered.map((t) => {
+              const p = PLATFORM[t.platform];
+              const blocked = !t.posture.allowed;
+              return (
+                <tr key={t.id}>
+                  <td>
+                    <div className="target-cell">
+                      <span className={`platform-mark ${p.cls}`}>{p.icon || p.label[0]}</span>
+                      <div>
+                        <div className="target-name">{t.id}</div>
+                        <div className="muted small">{t.version}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td><span className={`chip ${p.cls}`}>{p.label}</span></td>
+                  <td className="muted">{t.hostname}</td>
+                  <td>
+                    {blocked
+                      ? <span className="status blocked">● Blocked</span>
+                      : t.busy
+                        ? <span className="status busy">● In session</span>
+                        : <span className="status online">● Online</span>}
+                  </td>
+                  <td className="muted">{timeAgo(t.connectedAt)}</td>
+                  <td>
+                    <button className="connect" disabled={t.busy || blocked} onClick={() => connect(t)}>🖥️ Connect</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {!filtered.length && (
+              <tr><td colSpan={6} className="empty">No targets online. {bootstrap}</td></tr>
+            )}
+          </tbody>
+        </table>
+        <div className="card-foot muted">Showing {filtered.length} of {targets.length} targets</div>
       </div>
-      {error && <div className="error">{error}</div>}
-      <table>
-        <thead><tr><th>Target</th><th>Platform</th><th>Host</th><th>Status</th><th /></tr></thead>
-        <tbody>
-          {targets.map((t) => (
-            <tr key={t.id}>
-              <td>{t.id}</td>
-              <td>{t.platform === 'mac' ? 'macOS' : 'Windows'}</td>
-              <td>{t.hostname}</td>
-              <td>{t.busy ? 'in session' : t.posture.allowed ? 'online' : `blocked: ${t.posture.reason}`}</td>
-              <td><button disabled={t.busy || !t.posture.allowed} onClick={() => connect(t)}>Connect</button></td>
-            </tr>
-          ))}
-          {!targets.length && <tr><td colSpan={5} className="muted">No targets online. {bootstrap}</td></tr>}
-        </tbody>
-      </table>
-    </div>
+
+      {showAdd && (
+        <div className="modal-bg" onClick={() => setShowAdd(false)}>
+          <div className="modal card" onClick={(e) => e.stopPropagation()}>
+            <h2>Add a target</h2>
+            <p className="muted">Targets appear here automatically once the endpoint app is running on them. There is nothing to add manually — just install and run the client:</p>
+            <div className="instruction">{bootstrap || 'Download and run the Remote Access client on the target machine.'}</div>
+            <div className="row end"><button className="primary" onClick={() => setShowAdd(false)}>Got it</button></div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -127,8 +299,9 @@ function History() {
   useEffect(() => { if (open) api.audit(open).then(setDetail); else setDetail(undefined); }, [open]);
 
   return (
-    <div className="panel">
-      <table>
+    <div className="card">
+      <div className="card-head"><div className="card-head-left"><span className="card-icon">🕑</span><div><h2>Audit history</h2><p className="muted">Every session and its consent trail</p></div></div></div>
+      <table className="data">
         <thead><tr><th>Started</th><th>Operator</th><th>Target</th><th>Scope</th><th>State</th><th>Recording</th></tr></thead>
         <tbody>
           {rows.map((r) => (
@@ -136,16 +309,17 @@ function History() {
               <td>{new Date(r.created_at).toLocaleString()}</td>
               <td>{r.operator}</td>
               <td>{r.target}</td>
-              <td>{r.scope}</td>
-              <td>{r.state}</td>
-              <td>{r.recording_url ? 'yes' : '–'}</td>
+              <td><span className="chip">{r.scope}</span></td>
+              <td><span className={`status ${r.state === 'ACTIVE' ? 'online' : r.state === 'DENIED' ? 'blocked' : 'neutral'}`}>● {r.state}</span></td>
+              <td className="muted">{r.recording_url ? 'yes' : '–'}</td>
             </tr>
           ))}
+          {!rows.length && <tr><td colSpan={6} className="empty">No sessions yet.</td></tr>}
         </tbody>
       </table>
       {detail && (
         <div className="audit">
-          <h3>Audit trail · {detail.session.id}</h3>
+          <h3>Audit trail · <span className="muted">{detail.session.id}</span></h3>
           <ol>
             {detail.events.map((e, i) => (
               <li key={i}>
@@ -154,8 +328,8 @@ function History() {
             ))}
           </ol>
           <h3>Operator input log</h3>
-          <p>{detail.input.length ? detail.input.map((i) => `${i.type}: ${i.n}`).join(' · ') : 'no input recorded'}</p>
-          {detail.session.recording_url?.split(' ').map((u) => (
+          <p className="muted">{detail.input.length ? detail.input.map((i) => `${i.type}: ${i.n}`).join(' · ') : 'no input recorded'}</p>
+          {detail.session.recording_url?.split(' ').filter(Boolean).map((u) => (
             <div key={u}>
               <h3>Recording</h3>
               <video src={u} controls className="recording" />
@@ -164,6 +338,51 @@ function History() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function Recordings() {
+  const [rows, setRows] = useState<SessionRow[]>([]);
+  useEffect(() => { api.sessions().then((r) => setRows(r.sessions.filter((s) => s.recording_url))); }, []);
+  return (
+    <div className="card">
+      <div className="card-head"><div className="card-head-left"><span className="card-icon">🎥</span><div><h2>Session recordings</h2><p className="muted">Server-side recordings of completed sessions</p></div></div></div>
+      {!rows.length && (
+        <div className="empty-block">
+          <p>No recordings yet.</p>
+          <p className="muted small">Recording is on in local and production mode. In the internet-test (LiveKit Cloud) setup it is disabled, so sessions here won't produce files.</p>
+        </div>
+      )}
+      <div className="rec-grid">
+        {rows.map((r) => (
+          <div className="rec-card" key={r.id}>
+            <div className="rec-head">
+              <div className="target-name">{r.target}</div>
+              <div className="muted small">{new Date(r.created_at).toLocaleString()} · {r.operator}</div>
+            </div>
+            {r.recording_url!.split(' ').filter(Boolean).map((u) => (
+              <video key={u} src={u} controls className="rec-video" />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Settings({ user }: { user: string }) {
+  return (
+    <div className="card">
+      <div className="card-head"><div className="card-head-left"><span className="card-icon">⚙️</span><div><h2>Settings</h2><p className="muted">Operator & system information</p></div></div></div>
+      <div className="settings">
+        <div className="setting"><span className="muted">Signed in as</span><b>{user}</b></div>
+        <div className="setting"><span className="muted">Role</span><b>Operator</b></div>
+        <div className="setting"><span className="muted">Transport</span><b>WebRTC via SFU (DTLS-SRTP encrypted)</b></div>
+        <div className="setting"><span className="muted">Recording</span><b>Server-side (local / production mode)</b></div>
+        <div className="setting"><span className="muted">Audit</span><b>Append-only, tamper-evident</b></div>
+        <p className="muted small">Role-based permissions and identity provider (Entra ID / AD) are planned — operators are currently local accounts.</p>
+      </div>
     </div>
   );
 }
