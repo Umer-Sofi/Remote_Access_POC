@@ -10,6 +10,7 @@ export interface Target {
   hostname: string;
   version: string;
   busy: boolean;
+  connectedAt?: string;
   posture: { allowed: boolean; reason?: string };
 }
 
