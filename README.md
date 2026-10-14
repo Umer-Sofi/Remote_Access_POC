@@ -33,6 +33,22 @@ npm run e2e -- --target fake-1                # automated end-to-end check (20 a
 
 The **SFU smoke test** tab in the console (two browser tabs, one shares its screen) is milestone M1.
 
+## Distributing the client (download page)
+
+Operators get a **Download client** tab in the console. Each download is a zip with this server's
+address and `ENDPOINT_SECRET` already inside, so the person on the target unzips it, opens it once, and it
+shows up in **Targets**. The zips live in `clients/` (git-ignored, served only to logged-in operators).
+
+```bash
+scripts/package-clients.sh                 # macOS: builds the app, writes clients/RemoteAccessEndpoint-mac.zip
+BROKER=wss://broker.example.com/ws/endpoint scripts/package-clients.sh   # for a hosted server
+```
+
+Windows: on a Windows machine run `endpoint-win\scripts\build-exe.ps1 -Broker <url> -Secret <ENDPOINT_SECRET>`,
+then copy `dist\remote-access-endpoint-win.zip` into `clients/` on the server. The broker address must be
+reachable from the target machine (a LAN IP or domain, not `localhost`). The builds are not notarized or code-signed,
+so macOS (right-click → Open) and Windows SmartScreen (More info → Run anyway) warn on first run.
+
 ## macOS endpoint
 
 Needs the Xcode Command Line Tools (full Xcode is only needed for notarisation).

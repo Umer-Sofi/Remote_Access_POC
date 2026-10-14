@@ -10,3 +10,4 @@ target/
 transfer/
 .env.cloud
 *.tsbuildinfo
+clients/
