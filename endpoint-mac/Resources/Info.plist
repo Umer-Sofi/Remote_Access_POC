@@ -13,5 +13,16 @@
   <!-- Accessory app: no Dock icon; UI is only the consent prompt and the session banner. -->
   <key>LSUIElement</key>               <true/>
   <key>NSHighResolutionCapable</key>   <true/>
+  <!-- remoteaccess://enroll?… links from the invite page open this app. -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>       <string>Remote Access invite</string>
+      <key>CFBundleURLSchemes</key>    <array><string>remoteaccess</string></array>
+    </dict>
+  </array>
+  <!-- Lets the app reach a broker on the local network over http/ws (LAN testing). Public servers should use https/wss. -->
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>

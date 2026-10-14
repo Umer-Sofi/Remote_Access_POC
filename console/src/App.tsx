@@ -2,10 +2,11 @@
 // the client download page and the M1 smoke test. Deliberately no router library; four views is not worth one.
 import { useEffect, useState } from 'react';
 import { api, ApiError, type AuditEntry, type Scope, type SessionRow, type Target } from './api';
+import { Invites } from './Invites';
 import { Session } from './Session';
 import { Smoke } from './Smoke';
 
-type View = 'targets' | 'history' | 'download' | 'smoke';
+type View = 'targets' | 'invite' | 'history' | 'download' | 'smoke';
 
 export function App() {
   const [user, setUser] = useState<string | null | undefined>(undefined);
@@ -25,9 +26,9 @@ export function App() {
       <header>
         <h1>Remote Access</h1>
         <nav>
-          {(['targets', 'history', 'download', 'smoke'] as View[]).map((v) => (
+          {(['targets', 'invite', 'history', 'download', 'smoke'] as View[]).map((v) => (
             <button key={v} className={view === v ? 'active' : ''} onClick={() => setView(v)}>
-              {v === 'targets' ? 'Targets' : v === 'history' ? 'Audit history' : v === 'download' ? 'Download client' : 'SFU smoke test'}
+              {v === 'targets' ? 'Targets' : v === 'invite' ? 'Invite link' : v === 'history' ? 'Audit history' : v === 'download' ? 'Download client' : 'SFU smoke test'}
             </button>
           ))}
         </nav>
@@ -36,6 +37,7 @@ export function App() {
         <button onClick={() => api.logout().then(() => setUser(null))}>Log out</button>
       </header>
       {view === 'targets' && <Targets onStart={setSessionId} />}
+      {view === 'invite' && <Invites />}
       {view === 'history' && <History />}
       {view === 'download' && <Download />}
       {view === 'smoke' && <Smoke />}
@@ -112,7 +114,7 @@ function Targets({ onStart }: { onStart: (id: string) => void }) {
               <td><button disabled={t.busy || !t.posture.allowed} onClick={() => connect(t)}>Connect</button></td>
             </tr>
           ))}
-          {!targets.length && <tr><td colSpan={5} className="muted">No targets online. {bootstrap} Get the client from the “Download client” tab.</td></tr>}
+          {!targets.length && <tr><td colSpan={5} className="muted">No targets online. {bootstrap} Send someone an invite from the “Invite link” tab.</td></tr>}
         </tbody>
       </table>
     </div>

@@ -9,8 +9,10 @@ cd "$(dirname "$0")/.."
 IP=$(ipconfig getifaddr "${1:-en0}" || true)
 [[ -n "$IP" ]] || { echo "no IP on ${1:-en0}; try: scripts/lan-up.sh en1"; exit 1; }
 
+grep -q '^PUBLIC_URL=' .env || echo 'PUBLIC_URL=' >> .env
 sed -i '' -e "s|^LIVEKIT_NODE_IP=.*|LIVEKIT_NODE_IP=$IP|" \
-          -e "s|^LIVEKIT_PUBLIC_URL=.*|LIVEKIT_PUBLIC_URL=ws://$IP:7880|" .env
+          -e "s|^LIVEKIT_PUBLIC_URL=.*|LIVEKIT_PUBLIC_URL=ws://$IP:7880|" \
+          -e "s|^PUBLIC_URL=.*|PUBLIC_URL=http://$IP:8080|" .env
 docker compose up -d --build
 
 for i in $(seq 1 30); do curl -sf "http://$IP:8080/healthz" >/dev/null && break; sleep 2; done

@@ -21,8 +21,8 @@ on launch. All frames are UTF-8 JSON objects with a `type` field.
 
 | Dir | `type` | Payload | Notes |
 |---|---|---|---|
-| client→broker | `hello` | `{targetId, platform: "mac"\|"win", hostname, secret, version}` | First frame. Registers availability. *(extension to spec §8.1: registration needs a frame)* |
-| broker→client | `hello.ok` | `{targetId}` | Registration accepted. On failure the broker closes the socket with code 4001. |
+| client→broker | `hello` | `{targetId, platform: "mac"\|"win", hostname, version, secret? , deviceToken?}` | First frame. Registers availability. Carries **either** `deviceToken` (the credential from invite enrollment, bound to exactly this `targetId`) **or** the shared `secret` (manually configured / baked clients). *(extension to spec §8.1: registration needs a frame)* |
+| broker→client | `hello.ok` | `{targetId}` | Registration accepted. On failure the broker closes the socket with code 4001. A client that used a `deviceToken` and gets 4001 before `hello.ok` must delete its saved enrollment (the computer was revoked). |
 | broker→client | `session.request` | `{sessionId, operator, reason, scope}` | Show the consent prompt. Also sent mid-session when scope is raised to `control` (re-consent). |
 | client→broker | `consent.result` | `{sessionId, decision: "allow"\|"deny"}` | Timeout on the client = `deny`. |
 | broker→client | `session.token` | `{sessionId, livekitUrl, token, room}` | Only ever sent after `allow`. |
@@ -41,6 +41,21 @@ on launch. All frames are UTF-8 JSON objects with a `type` field.
 | `input_unavailable` | injection not possible (macOS: Accessibility grant missing) |
 | `ended` | the local user ended the session from the banner |
 | `error` | something failed; `detail` explains |
+
+### 1.1 Invite enrollment (HTTP, before the control link exists)
+
+An operator creates an invite in the console and sends `https://<server>/join/<token>`. That page offers the
+generic client and a button for the deep link `remoteaccess://enroll?token=<token>&server=<url-encoded server origin>`.
+The client app (registered as the handler for the `remoteaccess` scheme) must:
+
+1. Parse the link; accept only `remoteaccess://enroll` with a non-empty `token` and an `http(s)` `server`.
+2. **Ask the user** (naming the server host) before contacting it. Nothing is captured or shared by enrolling.
+3. `POST <server>/api/enroll` with `{token, platform: "mac"|"win", hostname}`. A `200` returns
+   `{deviceToken, targetId, server, wsUrl}`; `410` means the invite was used, expired or revoked.
+4. Store `deviceToken` (macOS: Keychain; Windows: per-user profile folder) and connect to `wsUrl`, sending `hello`
+   with `deviceToken` and the returned `targetId`.
+
+The token is single use (consumed by the enroll call, not by opening the page).
 
 ## 2. Input wire protocol (LiveKit data channel, topic `input`)
 

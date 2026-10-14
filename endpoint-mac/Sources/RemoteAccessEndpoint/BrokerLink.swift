@@ -42,7 +42,14 @@ final class BrokerLink: NSObject, URLSessionWebSocketDelegate, @unchecked Sendab
                 self.receive(t)
             case .failure(let err):
                 self.task = nil
-                self.onClose?(err.localizedDescription)
+                // When the broker closed the socket deliberately (e.g. 4001 unauthorized), report the
+                // close code and reason: the bare transport error does not carry them.
+                if t.closeCode != .invalid {
+                    let why = t.closeReason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                    self.onClose?("closed \(t.closeCode.rawValue) \(why)")
+                } else {
+                    self.onClose?(err.localizedDescription)
+                }
             }
         }
     }

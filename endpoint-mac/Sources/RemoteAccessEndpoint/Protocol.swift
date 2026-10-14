@@ -85,9 +85,12 @@ enum BrokerMessage {
 }
 
 enum ClientMessage {
-    static func hello(targetId: String, secret: String) -> [String: Any] {
-        ["type": "hello", "targetId": targetId, "platform": "mac", "hostname": Host.current().localizedName ?? targetId,
-         "secret": secret, "version": EndpointVersion]
+    static func hello(targetId: String, secret: String?, deviceToken: String? = nil) -> [String: Any] {
+        var m: [String: Any] = ["type": "hello", "targetId": targetId, "platform": "mac",
+                                "hostname": Host.current().localizedName ?? targetId, "version": EndpointVersion]
+        if let deviceToken { m["deviceToken"] = deviceToken }
+        if let secret { m["secret"] = secret }
+        return m
     }
     static func consent(_ sessionId: String, allow: Bool) -> [String: Any] {
         ["type": "consent.result", "sessionId": sessionId, "decision": allow ? "allow" : "deny"]
