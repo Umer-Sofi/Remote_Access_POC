@@ -7,7 +7,7 @@
 use crate::protocol::Scope;
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    IDYES, MB_DEFBUTTON2, MB_ICONQUESTION, MB_SETFOREGROUND, MB_SYSTEMMODAL, MB_TOPMOST, MB_YESNO,
+    MessageBoxW, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_DEFBUTTON2, MB_ICONQUESTION, MB_SETFOREGROUND, MB_SYSTEMMODAL, MB_TOPMOST, MB_YESNO,
 };
 
 pub const TIMEOUT_SECS: u32 = 30;
@@ -40,4 +40,19 @@ pub fn ask(operator: &str, reason: &str, scope: Scope) -> bool {
         eprintln!("consent timed out → deny");
     }
     r == IDYES as i32
+}
+
+/// Yes/No question with "No" as the default button. Blocks; call from spawn_blocking.
+pub fn confirm(caption: &str, text: &str) -> bool {
+    let (text, caption) = (wide(text), wide(caption));
+    let flags = MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2 | MB_TOPMOST | MB_SETFOREGROUND;
+    unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), flags) == IDYES as i32 }
+}
+
+/// One-button message. `warning` picks the icon. Blocks; call from spawn_blocking.
+pub fn notify(caption: &str, text: &str, warning: bool) {
+    let (text, caption) = (wide(text), wide(caption));
+    let icon = if warning { MB_ICONWARNING } else { MB_ICONINFORMATION };
+    let flags = MB_OK | icon | MB_TOPMOST | MB_SETFOREGROUND;
+    unsafe { MessageBoxW(std::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), flags) };
 }

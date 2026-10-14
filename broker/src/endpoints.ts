@@ -7,6 +7,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { config } from './config.js';
+import { verifyDevice } from './devices.js';
 
 export interface EndpointInfo {
   targetId: string;
@@ -57,6 +58,8 @@ export function attachEndpointServer(wss: WebSocketServer) {
     // The first frame must be a valid `hello` within 10 s, otherwise drop.
     const helloTimer = setTimeout(() => ws.close(4001, 'hello timeout'), 10_000);
 
+    let authing = false; // a hello is being verified against the database; ignore frames until it finishes
+
     ws.on('message', (raw) => {
       let msg: Msg;
       try {
@@ -67,25 +70,32 @@ export function attachEndpointServer(wss: WebSocketServer) {
       }
 
       if (!conn) {
+        if (authing) return;
         if (msg.type !== 'hello') return void ws.close(4001, 'expected hello');
-        const targetId = String(msg.targetId ?? '');
-        const platform = msg.platform === 'mac' || msg.platform === 'win' ? msg.platform : null;
-        if (!/^[A-Za-z0-9._-]{1,64}$/.test(targetId) || !platform || !secretOk(String(msg.secret ?? ''))) {
-          console.warn(`[endpoint] rejected hello from ${req.socket.remoteAddress} (${targetId || 'no id'})`);
-          return void ws.close(4001, 'unauthorized');
-        }
-        clearTimeout(helloTimer);
-        // A re-launched client replaces a stale link for the same target.
-        conns.get(targetId)?.ws.close(4002, 'replaced by new connection');
-        conn = {
-          ws, alive: true, targetId, platform,
-          hostname: String(msg.hostname ?? targetId),
-          version: String(msg.version ?? '?'),
-          connectedAt: new Date(),
-        };
-        conns.set(targetId, conn);
-        ws.send(JSON.stringify({ type: 'hello.ok', targetId }));
-        console.log(`[endpoint] ${targetId} (${platform}, ${conn.hostname}) connected`);
+        authing = true;
+        void authenticate(msg).then((ok) => {
+          if (!ok || ws.readyState !== WebSocket.OPEN) {
+            console.warn(`[endpoint] rejected hello from ${req.socket.remoteAddress} (${String(msg.targetId ?? '') || 'no id'})`);
+            return void ws.close(4001, 'unauthorized');
+          }
+          clearTimeout(helloTimer);
+          const targetId = String(msg.targetId);
+          const platform = msg.platform as 'mac' | 'win';
+          // A re-launched client replaces a stale link for the same target.
+          conns.get(targetId)?.ws.close(4002, 'replaced by new connection');
+          conn = {
+            ws, alive: true, targetId, platform,
+            hostname: String(msg.hostname ?? targetId),
+            version: String(msg.version ?? '?'),
+            connectedAt: new Date(),
+          };
+          conns.set(targetId, conn);
+          ws.send(JSON.stringify({ type: 'hello.ok', targetId }));
+          console.log(`[endpoint] ${targetId} (${platform}, ${conn.hostname}) connected`);
+        }).catch((err) => {
+          console.error('[endpoint] hello check failed', err);
+          ws.close(1011, 'server error');
+        });
         return;
       }
       handlers.onMessage(conn.targetId, msg);
@@ -113,6 +123,23 @@ export function attachEndpointServer(wss: WebSocketServer) {
       c.ws.ping();
     }
   }, 10_000).unref();
+}
+
+/**
+ * Valid when the frame carries either an enrolled device's credential (bound to this exact
+ * target id) or the shared ENDPOINT_SECRET (fake endpoint, e2e test, manually configured clients).
+ */
+async function authenticate(msg: Msg): Promise<boolean> {
+  const targetId = String(msg.targetId ?? '');
+  const platform = msg.platform === 'mac' || msg.platform === 'win';
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(targetId) || !platform) return false;
+  if (typeof msg.deviceToken === 'string' && msg.deviceToken) return verifyDevice(msg.deviceToken, targetId);
+  return secretOk(String(msg.secret ?? ''));
+}
+
+/** Close a target's control link (used when its device credential is revoked). */
+export function disconnectEndpoint(targetId: string, reason: string) {
+  conns.get(targetId)?.ws.close(4001, reason);
 }
 
 export function markBusy(targetId: string, sessionId: string | undefined) {

@@ -83,6 +83,7 @@ services:
       RECORDINGS_DIR: /recordings
       EGRESS_OUT_DIR: /out
       CLIENTS_DIR: /clients
+      PUBLIC_URL: ${PUBLIC_URL:-}
     volumes:
       - ./recordings:/recordings:ro
       - ./clients:/clients:ro

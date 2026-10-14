@@ -25,6 +25,8 @@ final class EndpointController {
     private var scope = Scope.view
     private var heartbeat: Timer?
     private var registered = false
+    /// Called when the broker rejects our device credential (the computer was revoked).
+    var onRevoked: (() -> Void)?
 
     init(config: EndpointConfig) {
         cfg = config
@@ -35,7 +37,7 @@ final class EndpointController {
         link.onOpen = { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                self.link.send(ClientMessage.hello(targetId: self.cfg.targetId, secret: self.cfg.secret))
+                self.link.send(ClientMessage.hello(targetId: self.cfg.targetId, secret: self.cfg.secret, deviceToken: self.cfg.deviceToken))
             }
         }
         link.onMessage = { [weak self] m in Task { @MainActor in self?.handle(m) } }
@@ -178,6 +180,10 @@ final class EndpointController {
 
     private func linkLost(_ why: String) {
         log("broker link lost: \(why)")
+        if !registered, cfg.deviceToken != nil, why.contains("4001") {
+            onRevoked?()
+            return
+        }
         switch phase {
         case .idle where !registered:
             // Never registered (broker not reachable yet): retry quietly.

@@ -9,6 +9,8 @@ import { WebSocketServer } from 'ws';
 import { flushInput, getSessionRow, inputStats, listAudit, listSessions } from './audit.js';
 import { config } from './config.js';
 import { waitForDb } from './db.js';
+import { registerInviteRoutes } from './invites.js';
+import { ensureSchema } from './schema.js';
 import { attachEndpointServer, listEndpoints } from './endpoints.js';
 import { smokeRoom, verifyWebhook } from './livekit.js';
 import { providers, type Identity } from './providers/index.js';
@@ -132,6 +134,8 @@ app.get('/api/recordings/*path', requireOperator, (req, res) => {
   res.sendFile(join(config.recordingsDir, rel), (err) => { if (err && !res.headersSent) res.sendStatus(404); });
 });
 
+registerInviteRoutes(app, requireOperator, who);
+
 // ---- endpoint client downloads (operators only) -----------------------------------
 // The zips have the broker URL and ENDPOINT_SECRET baked in, so they are never public.
 // Platform is whitelisted and filenames are fixed, so no user input reaches the path.
@@ -182,6 +186,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 // ---- boot --------------------------------------------------------------------------
 await waitForDb();
+await ensureSchema();
 await recoverAfterRestart();
 
 const server = createServer(app);

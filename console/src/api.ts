@@ -50,6 +50,15 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
+export interface InviteRow {
+  id: string; created_by: string; note: string | null; created_at: string; expires_at: string;
+  status: 'pending' | 'opened' | 'enrolled' | 'expired' | 'revoked'; target_id: string | null;
+}
+export interface DeviceRow {
+  id: string; target_id: string; platform: string; hostname: string | null; enrolled_at: string;
+  last_seen_at: string | null; revoked_at: string | null; online: boolean;
+}
+
 export const api = {
   me: () => call<{ username: string }>('GET', '/api/me'),
   login: (username: string, password: string) => call<{ username: string }>('POST', '/api/login', { username, password }),
@@ -64,5 +73,12 @@ export const api = {
   audit: (id: string) =>
     call<{ session: SessionRow; events: AuditEntry[]; input: { type: string; n: number }[] }>('GET', `/api/sessions/${id}/audit`),
   clients: () => call<{ mac: boolean; win: boolean }>('GET', '/api/clients'),
+  inviteConfig: () => call<{ defaultServer: string }>('GET', '/api/invites/config'),
+  createInvite: (note: string, ttlHours: number, server: string) =>
+    call<{ id: string; url: string; expiresAt: string; warning?: string }>('POST', '/api/invites', { note, ttlHours, server }),
+  invites: () => call<{ invites: InviteRow[] }>('GET', '/api/invites'),
+  revokeInvite: (id: string) => call('POST', `/api/invites/${id}/revoke`),
+  devices: () => call<{ devices: DeviceRow[] }>('GET', '/api/devices'),
+  revokeDevice: (id: string) => call('POST', `/api/devices/${id}/revoke`),
   smokeToken: () => call<{ livekitUrl: string; token: string; room: string }>('POST', '/api/dev/smoke-token'),
 };

@@ -30,6 +30,8 @@ export const config = {
 
   recordingsDir: process.env.RECORDINGS_DIR ?? '/recordings', // broker's read-only view
   egressOutDir: process.env.EGRESS_OUT_DIR ?? '/out', // same volume, as egress sees it
+  // Address the target computers use to reach the broker (goes into invite links), e.g. https://broker.example.com
+  publicUrl: process.env.PUBLIC_URL || undefined,
   clientsDir: process.env.CLIENTS_DIR ?? '/clients', // prebuilt endpoint zips (contain ENDPOINT_SECRET)
   consoleDir: process.env.CONSOLE_DIR ?? new URL('../../console/dist', import.meta.url).pathname,
 

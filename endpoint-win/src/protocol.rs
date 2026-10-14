@@ -145,9 +145,11 @@ impl BrokerMessage {
     }
 }
 
-pub fn hello(target_id: &str, secret: &str, hostname: &str) -> String {
-    json!({ "type": "hello", "targetId": target_id, "platform": "win", "hostname": hostname, "secret": secret, "version": VERSION })
-        .to_string()
+pub fn hello(target_id: &str, secret: Option<&str>, device_token: Option<&str>, hostname: &str) -> String {
+    let mut v = json!({ "type": "hello", "targetId": target_id, "platform": "win", "hostname": hostname, "version": VERSION });
+    if let Some(t) = device_token { v["deviceToken"] = json!(t); }
+    if let Some(s) = secret { v["secret"] = json!(s); }
+    v.to_string()
 }
 
 pub fn consent(session_id: &str, allow: bool) -> String {

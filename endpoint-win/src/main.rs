@@ -8,7 +8,9 @@
 //!                                                                           → teardown → exit
 //!
 //! Configuration (first match wins): --broker/--target/--secret/--max-fps,
-//! env RA_BROKER/RA_TARGET/RA_SECRET, or endpoint.json next to the exe.
+//! env RA_BROKER/RA_TARGET/RA_SECRET, endpoint.json next to the exe, or the enrollment saved
+//! after the user opened an invite link (remoteaccess://enroll?…, see enroll.rs).
+mod enroll;
 mod generated;
 mod protocol;
 mod providers;
@@ -71,7 +73,8 @@ mod win {
     struct Config {
         broker: String,
         target: String,
-        secret: String,
+        secret: Option<String>,       // shared ENDPOINT_SECRET (manual / baked builds)
+        device_token: Option<String>, // per-computer credential from invite enrollment
         max_fps: u32,
     }
 
@@ -86,12 +89,56 @@ mod win {
             .unwrap_or_default();
         let from_file = |k: &str| file.get(k).and_then(|v| v.as_str()).map(String::from);
         let hostname = env("COMPUTERNAME").unwrap_or_else(|| "win".into());
-        Some(Config {
-            broker: arg("broker").or_else(|| env("RA_BROKER")).or_else(|| from_file("broker"))?,
-            secret: arg("secret").or_else(|| env("RA_SECRET")).or_else(|| from_file("secret"))?,
-            target: arg("target").or_else(|| env("RA_TARGET")).or_else(|| from_file("target")).unwrap_or(hostname),
-            max_fps: arg("max-fps").and_then(|s| s.parse().ok()).unwrap_or(30),
-        })
+        let max_fps = arg("max-fps").and_then(|s| s.parse().ok()).unwrap_or(30);
+        if let (Some(broker), Some(secret)) = (
+            arg("broker").or_else(|| env("RA_BROKER")).or_else(|| from_file("broker")),
+            arg("secret").or_else(|| env("RA_SECRET")).or_else(|| from_file("secret")),
+        ) {
+            return Some(Config {
+                broker,
+                secret: Some(secret),
+                device_token: None,
+                target: arg("target").or_else(|| env("RA_TARGET")).or_else(|| from_file("target")).unwrap_or(hostname),
+                max_fps,
+            });
+        }
+        config_from(crate::enroll::load()?, max_fps)
+    }
+
+    fn config_from(e: crate::enroll::Enrollment, max_fps: u32) -> Option<Config> {
+        Some(Config { broker: e.ws_url, target: e.target_id, secret: None, device_token: Some(e.device_token), max_fps })
+    }
+
+    /// Handles a remoteaccess://enroll link the exe was started with. None = nothing to do or the user said no.
+    async fn enroll_from_link(link_text: &str) -> Option<Config> {
+        let Some(link) = crate::enroll::parse_link(link_text) else {
+            let _ = tokio::task::spawn_blocking(|| consent::notify("Remote Access", "That link is not a valid invite.", true)).await;
+            return None;
+        };
+        let host = crate::enroll::host_of(&link.server).to_string();
+        let question = format!(
+            "Connect this computer to {host}?\n\nPeople at {host} will be able to ask to view and control this screen.\n\n\
+             Nothing is shared unless you click Allow on a prompt each time, a red banner shows while a session is running, \
+             and you can end it at any time.\n\nThis app will also start when you sign in."
+        );
+        let yes = tokio::task::spawn_blocking(move || consent::confirm("Remote Access", &question)).await.unwrap_or(false);
+        if !yes {
+            return None;
+        }
+        let hostname = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "win".into());
+        let result = tokio::task::spawn_blocking(move || crate::enroll::enroll(&link, &hostname)).await;
+        match result {
+            Ok(Ok(e)) => {
+                crate::enroll::enable_autostart();
+                config_from(e, 30)
+            }
+            Ok(Err(err)) => {
+                let msg = format!("Remote Access could not connect.\n\n{err}");
+                let _ = tokio::task::spawn_blocking(move || consent::notify("Remote Access", &msg, true)).await;
+                None
+            }
+            Err(_) => None,
+        }
     }
 
     #[derive(PartialEq, Clone)]
@@ -112,9 +159,25 @@ mod win {
 
     pub async fn run() -> anyhow::Result<()> {
         set_dpi_aware();
-        let Some(cfg) = load_config() else {
-            eprintln!("usage: remote-access-endpoint --broker wss://host/ws/endpoint --secret <ENDPOINT_SECRET> [--target id]");
-            std::process::exit(2);
+        crate::enroll::register_url_scheme(); // so remoteaccess:// links reach this exe (per-user, no admin)
+        let link_arg = std::env::args().find(|a| a.starts_with("remoteaccess:"));
+        let cfg = match link_arg {
+            Some(link) => match enroll_from_link(&link).await {
+                Some(c) => c,
+                None => return Ok(()),
+            },
+            None => match load_config() {
+                Some(c) => c,
+                None => {
+                    // Opened by hand before using the invite link: nothing to connect to yet.
+                    eprintln!("not enrolled yet; waiting for an invite link");
+                    let _ = tokio::task::spawn_blocking(|| {
+                        consent::notify("Remote Access", "Remote Access is ready.\n\nGo back to the invite page and click \"Connect this computer\".", false)
+                    })
+                    .await;
+                    return Ok(());
+                }
+            },
         };
         let hostname = std::env::var("COMPUTERNAME").unwrap_or_else(|_| cfg.target.clone());
 
@@ -132,7 +195,7 @@ mod win {
         let send = |s: String| {
             let _ = out.send(s);
         };
-        send(p::hello(&cfg.target, &cfg.secret, &hostname));
+        send(p::hello(&cfg.target, cfg.secret.as_deref(), cfg.device_token.as_deref(), &hostname));
 
         let (ev_tx, mut ev_rx) = unbounded_channel::<Ev>();
         {
@@ -145,6 +208,7 @@ mod win {
         }
 
         let mut phase = Phase::Idle;
+        let mut registered = false;
         let mut operator = String::new();
         let mut scope = Scope::View;
         let mut injector = Injector::new();
@@ -157,6 +221,16 @@ mod win {
                 Ev::Link(LinkEvent::Closed(why)) => {
                     // Losing the control link must stop capture immediately.
                     eprintln!("broker link lost: {why}");
+                    if !registered && cfg.device_token.is_some() && why.contains("4001") {
+                        // The broker no longer accepts this computer's credential (an operator removed it).
+                        crate::enroll::clear();
+                        let _ = tokio::task::spawn_blocking(|| consent::notify(
+                            "Remote Access",
+                            "This computer was disconnected from the server.\n\nIf you still need help, open a new invite link.",
+                            true,
+                        )).await;
+                        std::process::exit(0);
+                    }
                     injector.release_all();
                     if let Some(mut c) = capture.take() { c.stop(); }
                     if let Some(i) = indicator.as_mut() { i.hide(); }
@@ -164,7 +238,10 @@ mod win {
                     finish("broker link lost");
                 }
                 Ev::Link(LinkEvent::Message(m)) => match m {
-                    BrokerMessage::HelloOk => eprintln!("registered with broker; waiting for a session request (ephemeral)"),
+                    BrokerMessage::HelloOk => {
+                        registered = true;
+                        eprintln!("registered with broker; waiting for a session request (ephemeral)");
+                    }
 
                     BrokerMessage::Request(r) => {
                         let initial = phase == Phase::Idle;

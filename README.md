@@ -33,21 +33,29 @@ npm run e2e -- --target fake-1                # automated end-to-end check (20 a
 
 The **SFU smoke test** tab in the console (two browser tabs, one shares its screen) is milestone M1.
 
-## Distributing the client (download page)
+## Onboarding a computer with an invite link
 
-Operators get a **Download client** tab in the console. Each download is a zip with this server's
-address and `ENDPOINT_SECRET` already inside, so the person on the target unzips it, opens it once, and it
-shows up in **Targets**. The zips live in `clients/` (git-ignored, served only to logged-in operators).
+1. An operator opens **Invite link** in the console, optionally names who it is for, and copies the link
+   (`https://<server>/join/<token>`) into Teams or mail. The link works for one computer and expires (default 24 h).
+2. The user opens it, downloads the app, opens it once, and clicks **Connect this computer** on the page. The app asks
+   them to confirm, enrolls with the one-time token, and keeps its own per-computer credential
+   (macOS Keychain; Windows `%LOCALAPPDATA%\RemoteAccess`). It then connects by itself and appears under **Targets**.
+3. Sessions still need the user's Allow every time. Operators can revoke a computer under **Enrolled computers**;
+   it disconnects at once and its saved credential is cleared the next time the app starts.
 
 ```bash
-scripts/package-clients.sh                 # macOS: builds the app, writes clients/RemoteAccessEndpoint-mac.zip
-BROKER=wss://broker.example.com/ws/endpoint scripts/package-clients.sh   # for a hosted server
+scripts/package-clients.sh            # macOS: builds the app, writes clients/RemoteAccessEndpoint-mac-generic.zip (+ legacy baked zip)
+scripts/lan-up.sh                     # sets PUBLIC_URL (the address invite links point to) to this Mac's LAN IP
 ```
 
-Windows: on a Windows machine run `endpoint-win\scripts\build-exe.ps1 -Broker <url> -Secret <ENDPOINT_SECRET>`,
-then copy `dist\remote-access-endpoint-win.zip` into `clients/` on the server. The broker address must be
-reachable from the target machine (a LAN IP or domain, not `localhost`). The builds are not notarized or code-signed,
-so macOS (right-click → Open) and Windows SmartScreen (More info → Run anyway) warn on first run.
+* `PUBLIC_URL` in `.env` is the address **target computers** use to reach the broker. It is prefilled in the Invite form
+  and can be edited there. `localhost` only works when testing on the same computer.
+* Windows: on a Windows machine run `endpoint-win\scripts\build-exe.ps1`, then copy `dist\remote-access-endpoint-win-generic.zip`
+  into `clients/` on the server. The Windows client has not been compiled yet (see below).
+* The generic zips contain **no secret**; invite downloads are gated by the token. The older **Download client** tab serves a build
+  with the shared `ENDPOINT_SECRET` baked in, behind operator login; prefer invites.
+* Builds are not notarized or code-signed, so macOS (right-click → Open) and Windows SmartScreen (More info → Run anyway)
+  warn on first run. Removing that needs an Apple Developer ID and a Windows code-signing certificate.
 
 ## macOS endpoint
 
