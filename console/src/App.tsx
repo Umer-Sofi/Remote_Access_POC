@@ -1,11 +1,11 @@
 // Operator console shell: login → target list → session, plus audit history and
-// the M1 smoke test. Deliberately no router library; four views is not worth one.
+// the client download page and the M1 smoke test. Deliberately no router library; four views is not worth one.
 import { useEffect, useState } from 'react';
 import { api, ApiError, type AuditEntry, type Scope, type SessionRow, type Target } from './api';
 import { Session } from './Session';
 import { Smoke } from './Smoke';
 
-type View = 'targets' | 'history' | 'smoke';
+type View = 'targets' | 'history' | 'download' | 'smoke';
 
 export function App() {
   const [user, setUser] = useState<string | null | undefined>(undefined);
@@ -25,9 +25,9 @@ export function App() {
       <header>
         <h1>Remote Access</h1>
         <nav>
-          {(['targets', 'history', 'smoke'] as View[]).map((v) => (
+          {(['targets', 'history', 'download', 'smoke'] as View[]).map((v) => (
             <button key={v} className={view === v ? 'active' : ''} onClick={() => setView(v)}>
-              {v === 'targets' ? 'Targets' : v === 'history' ? 'Audit history' : 'SFU smoke test'}
+              {v === 'targets' ? 'Targets' : v === 'history' ? 'Audit history' : v === 'download' ? 'Download client' : 'SFU smoke test'}
             </button>
           ))}
         </nav>
@@ -37,6 +37,7 @@ export function App() {
       </header>
       {view === 'targets' && <Targets onStart={setSessionId} />}
       {view === 'history' && <History />}
+      {view === 'download' && <Download />}
       {view === 'smoke' && <Smoke />}
     </div>
   );
@@ -111,9 +112,53 @@ function Targets({ onStart }: { onStart: (id: string) => void }) {
               <td><button disabled={t.busy || !t.posture.allowed} onClick={() => connect(t)}>Connect</button></td>
             </tr>
           ))}
-          {!targets.length && <tr><td colSpan={5} className="muted">No targets online. {bootstrap}</td></tr>}
+          {!targets.length && <tr><td colSpan={5} className="muted">No targets online. {bootstrap} Get the client from the “Download client” tab.</td></tr>}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+const guessPlatform = (): 'mac' | 'win' | undefined => {
+  const ua = navigator.userAgent;
+  return /Mac/i.test(ua) ? 'mac' : /Windows/i.test(ua) ? 'win' : undefined;
+};
+
+function Download() {
+  const [available, setAvailable] = useState<{ mac: boolean; win: boolean }>();
+  const mine = guessPlatform();
+  useEffect(() => { api.clients().then(setAvailable).catch(() => setAvailable({ mac: false, win: false })); }, []);
+
+  const card = (p: 'mac' | 'win', title: string, file: string, steps: string[]) => (
+    <div className="panel card">
+      <h3>{title} {mine === p && <span className="badge">your computer</span>}</h3>
+      {available?.[p]
+        ? <a className="button" href={`/api/clients/${p}`} download={file}>Download {file}</a>
+        : <button disabled>{available ? 'Not available yet' : 'Checking…'}</button>}
+      <ol>{steps.map((s) => <li key={s}>{s}</li>)}</ol>
+    </div>
+  );
+
+  return (
+    <div className="panel">
+      <p className="muted">
+        Run this on the computer you want to be able to reach. The download already knows this server, so there is
+        nothing to configure. It stays idle until an operator requests a session, and the person at the computer
+        must click Allow before anything is shared.
+      </p>
+      <div className="cards">
+        {card('mac', 'macOS', 'RemoteAccessEndpoint-mac.zip', [
+          'Unzip it and move Remote Access to Applications.',
+          'Right-click the app and choose Open (it is not notarized yet), then confirm.',
+          'Allow Screen Recording and Accessibility in System Settings → Privacy & Security, then open the app again.',
+          'It appears in the Targets tab within a few seconds.',
+        ])}
+        {card('win', 'Windows', 'remote-access-endpoint-win.zip', [
+          'Unzip it and double-click remote-access-endpoint.exe.',
+          'If SmartScreen warns, choose More info → Run anyway.',
+          'It appears in the Targets tab within a few seconds.',
+        ])}
+      </div>
     </div>
   );
 }

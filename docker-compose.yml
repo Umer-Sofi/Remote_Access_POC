@@ -84,8 +84,10 @@ services:
       REQUIRE_RECORDING: ${REQUIRE_RECORDING}
       RECORDINGS_DIR: /recordings
       EGRESS_OUT_DIR: /out                            # path as the egress container sees it
+      CLIENTS_DIR: /clients                           # packaged endpoint zips for the console's download page
     volumes:
       - ./recordings:/recordings:ro
+      - ./clients:/clients:ro
     ports:
       - "8080:8080"
     depends_on:

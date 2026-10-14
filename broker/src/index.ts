@@ -132,6 +132,30 @@ app.get('/api/recordings/*path', requireOperator, (req, res) => {
   res.sendFile(join(config.recordingsDir, rel), (err) => { if (err && !res.headersSent) res.sendStatus(404); });
 });
 
+// ---- endpoint client downloads (operators only) -----------------------------------
+// The zips have the broker URL and ENDPOINT_SECRET baked in, so they are never public.
+// Platform is whitelisted and filenames are fixed, so no user input reaches the path.
+const CLIENT_FILES = { mac: 'RemoteAccessEndpoint-mac.zip', win: 'remote-access-endpoint-win.zip' } as const;
+type ClientPlatform = keyof typeof CLIENT_FILES;
+const isClientPlatform = (p: string): p is ClientPlatform => Object.hasOwn(CLIENT_FILES, p);
+
+app.get('/api/clients', requireOperator, (_req, res) => {
+  res.json({
+    mac: existsSync(join(config.clientsDir, CLIENT_FILES.mac)),
+    win: existsSync(join(config.clientsDir, CLIENT_FILES.win)),
+  });
+});
+
+app.get('/api/clients/:platform', requireOperator, (req, res) => {
+  const platform = String(req.params.platform);
+  if (!isClientPlatform(platform)) return void res.status(404).json({ error: 'unknown platform' });
+  const file = join(config.clientsDir, CLIENT_FILES[platform]);
+  if (!existsSync(file)) {
+    return void res.status(404).json({ error: `no ${platform} client has been packaged yet (see README, "Distributing the client")` });
+  }
+  res.download(file, CLIENT_FILES[platform]);
+});
+
 // ---- M1 smoke test: two browser tabs share a screen through the SFU ---------------
 app.post('/api/dev/smoke-token', requireOperator, async (req, res) => {
   const room = 'smoke-test';

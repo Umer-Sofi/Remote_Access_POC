@@ -63,5 +63,6 @@ export const api = {
   sessions: () => call<{ sessions: SessionRow[] }>('GET', '/api/sessions'),
   audit: (id: string) =>
     call<{ session: SessionRow; events: AuditEntry[]; input: { type: string; n: number }[] }>('GET', `/api/sessions/${id}/audit`),
+  clients: () => call<{ mac: boolean; win: boolean }>('GET', '/api/clients'),
   smokeToken: () => call<{ livekitUrl: string; token: string; room: string }>('POST', '/api/dev/smoke-token'),
 };

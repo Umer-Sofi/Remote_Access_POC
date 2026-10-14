@@ -30,6 +30,7 @@ export const config = {
 
   recordingsDir: process.env.RECORDINGS_DIR ?? '/recordings', // broker's read-only view
   egressOutDir: process.env.EGRESS_OUT_DIR ?? '/out', // same volume, as egress sees it
+  clientsDir: process.env.CLIENTS_DIR ?? '/clients', // prebuilt endpoint zips (contain ENDPOINT_SECRET)
   consoleDir: process.env.CONSOLE_DIR ?? new URL('../../console/dist', import.meta.url).pathname,
 
   // Timings (seconds). Consent must be answered on the endpoint within 30 s; the
