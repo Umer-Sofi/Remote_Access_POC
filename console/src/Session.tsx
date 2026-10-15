@@ -159,9 +159,6 @@ export function Session({ sessionId, onExit }: { sessionId: string; onExit: () =
         <span className="badge">{status?.scope === 'control' ? 'Control' : 'View only'}</span>
         {status?.reconsentPending && <span className="badge warn">awaiting user approval for control</span>}
         <span className="spacer" />
-        <button disabled={!hasVideo || status?.scope !== 'control'} onClick={() => send({ t: 'cmd', name: 'ctrl-alt-del' })}>
-          Ctrl-Alt-Del
-        </button>
         <button disabled={!hasVideo || status?.reconsentPending} onClick={toggleScope}>
           {status?.scope === 'control' ? 'Switch to view only' : 'Request control'}
         </button>

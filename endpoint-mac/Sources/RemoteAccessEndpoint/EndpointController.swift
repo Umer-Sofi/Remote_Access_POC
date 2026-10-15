@@ -81,6 +81,12 @@ final class EndpointController {
             case .approved(id), .streaming(id): Task { await teardown(reason: "broker: \(reason)") }
             default: break
             }
+
+        case .revoked(let reason):
+            // The operator removed this computer. Forget the saved enrollment and quit
+            // so a new invite can enroll it cleanly (handled by onRevoked in main.swift).
+            log("revoked by broker: \(reason)")
+            onRevoked?()
         }
     }
 
@@ -180,7 +186,10 @@ final class EndpointController {
 
     private func linkLost(_ why: String) {
         log("broker link lost: \(why)")
-        if !registered, cfg.deviceToken != nil, why.contains("4001") {
+        // Fallback if the explicit `revoked` message was missed: a 4003 close (or a 4001
+        // rejection before we ever registered) on an enrolled client means the credential
+        // is no longer accepted — forget it and quit.
+        if cfg.deviceToken != nil, why.contains("4003") || (!registered && why.contains("4001")) {
             onRevoked?()
             return
         }
