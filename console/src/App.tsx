@@ -1,7 +1,7 @@
 // Operator console shell, styled as the "GefyLink" dashboard. Login → sidebar
 // dashboard (Targets, Audit history, Session recordings, SFU smoke test, Settings).
 // All data comes from the existing broker API; no router library (few views).
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, type AuditEntry, type Scope, type SessionRow, type Target } from './api';
 import { Session } from './Session';
 import { Smoke } from './Smoke';
@@ -111,10 +111,10 @@ export function App() {
         <div className="main">
           <div className="content">
             {view === 'targets' && <Targets onStart={setSessionId} user={user} />}
-            {view === 'invite' && <div className="card"><Invites /></div>}
+            {view === 'invite' && <Invites />}
             {view === 'history' && <History />}
             {view === 'recordings' && <Recordings />}
-            {view === 'download' && <div className="card"><Download /></div>}
+            {view === 'download' && <Download />}
             {view === 'smoke' && <div className="card"><Smoke /></div>}
             {view === 'settings' && <Settings user={user} />}
           </div>
@@ -196,7 +196,7 @@ function Targets({ onStart, user }: { onStart: (id: string) => void; user: strin
   const [q, setQ] = useState('');
   const [platform, setPlatform] = useState<'all' | 'mac' | 'win'>('all');
   const [status, setStatus] = useState<'all' | 'online' | 'busy'>('all');
-  const [showAdd, setShowAdd] = useState(false);
+  const [connectTarget, setConnectTarget] = useState<Target | null>(null);
 
   // "Connectable targets" = endpoints holding a live WSS link right now (spec §8.1).
   useEffect(() => {
@@ -216,10 +216,20 @@ function Targets({ onStart, user }: { onStart: (id: string) => void; user: strin
     recordings: sessions.filter((s) => s.recording_url).length,
   };
 
-  const connect = async (t: Target) => {
+  const openConnect = (t: Target) => {
+    setError(undefined);
+    setReason('');
+    setScope('control');
+    setConnectTarget(t);
+  };
+
+  const connect = async () => {
+    if (!connectTarget) return;
     setError(undefined);
     try {
-      onStart((await api.startSession(t.id, reason, scope)).sessionId);
+      const id = (await api.startSession(connectTarget.id, reason, scope)).sessionId;
+      setConnectTarget(null);
+      onStart(id);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -245,7 +255,6 @@ function Targets({ onStart, user }: { onStart: (id: string) => void; user: strin
               <p className="muted">Manage and connect to your remote devices</p>
             </div>
           </div>
-          <button className="primary" onClick={() => setShowAdd(true)}>+ Add Target</button>
         </div>
 
         <div className="toolbar-row">
@@ -265,119 +274,218 @@ function Targets({ onStart, user }: { onStart: (id: string) => void; user: strin
           </select>
         </div>
 
-        <div className="consent-bar">
-          <input className="grow" placeholder="Reason (shown to the user in the consent prompt)" value={reason} onChange={(e) => setReason(e.target.value)} />
-          <select value={scope} onChange={(e) => setScope(e.target.value as Scope)}>
-            <option value="control">View + control</option>
-            <option value="view">View only</option>
-          </select>
-        </div>
-
         {error && <div className="error">{error}</div>}
 
-        <table className="data">
-          <thead><tr><th>Target</th><th>Platform</th><th>Host</th><th>Status</th><th>Last seen</th><th>Actions</th></tr></thead>
-          <tbody>
-            {filtered.map((t) => {
-              const p = PLATFORM[t.platform];
-              const blocked = !t.posture.allowed;
-              return (
-                <tr key={t.id}>
-                  <td>
-                    <div className="target-cell">
-                      <span className={`platform-mark ${p.cls}`}>{p.icon || p.label[0]}</span>
-                      <div>
-                        <div className="target-name">{t.id}</div>
-                        <div className="muted small">{t.version}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td><span className={`chip ${p.cls}`}>{p.label}</span></td>
-                  <td className="muted">{t.hostname}</td>
-                  <td>
-                    {blocked
-                      ? <span className="status blocked">● Blocked</span>
-                      : t.busy
-                        ? <span className="status busy">● In session</span>
-                        : <span className="status online">● Online</span>}
-                  </td>
-                  <td className="muted">{timeAgo(t.connectedAt)}</td>
-                  <td>
-                    <button className="connect" disabled={t.busy || blocked} onClick={() => connect(t)}>🖥️ Connect</button>
-                  </td>
-                </tr>
-              );
-            })}
-            {!filtered.length && (
-              <tr><td colSpan={6} className="empty">No targets online. {bootstrap}</td></tr>
-            )}
-          </tbody>
-        </table>
-        <div className="card-foot muted">Showing {filtered.length} of {targets.length} targets</div>
+        {filtered.length ? (
+          <>
+            <table className="data">
+              <thead><tr><th>Target</th><th>Platform</th><th>Host</th><th>Status</th><th>Last seen</th><th>Actions</th></tr></thead>
+              <tbody>
+                {filtered.map((t) => {
+                  const p = PLATFORM[t.platform];
+                  const blocked = !t.posture.allowed;
+                  return (
+                    <tr key={t.id}>
+                      <td>
+                        <div className="target-cell">
+                          <span className={`platform-mark ${p.cls}`}>{p.icon || p.label[0]}</span>
+                          <div>
+                            <div className="target-name">{t.id}</div>
+                            <div className="muted small">{t.version}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td><span className={`chip ${p.cls}`}>{p.label}</span></td>
+                      <td className="muted">{t.hostname}</td>
+                      <td>
+                        {blocked
+                          ? <span className="status blocked">● Blocked</span>
+                          : t.busy
+                            ? <span className="status busy">● In session</span>
+                            : <span className="status online">● Online</span>}
+                      </td>
+                      <td className="muted">{timeAgo(t.connectedAt)}</td>
+                      <td>
+                        <button className="connect" disabled={t.busy || blocked} onClick={() => openConnect(t)}>🖥️ Connect</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="card-foot muted">Showing {filtered.length} of {targets.length} targets</div>
+          </>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-icon">🖥️</div>
+            <h3>{targets.length ? 'No targets match your filters' : 'No targets online yet'}</h3>
+            <p className="muted">
+              {targets.length
+                ? 'Try clearing the search or status filters above.'
+                : 'Devices show up here automatically once the Remote Access client is installed and running on them.'}
+            </p>
+            {!targets.length && bootstrap && <div className="instruction">{bootstrap}</div>}
+          </div>
+        )}
       </div>
 
-      {showAdd && (
-        <div className="modal-bg" onClick={() => setShowAdd(false)}>
+      {connectTarget && (
+        <div className="modal-bg" onClick={() => setConnectTarget(null)}>
           <div className="modal card" onClick={(e) => e.stopPropagation()}>
-            <h2>Add a target</h2>
-            <p className="muted">Targets appear here automatically once the endpoint app is running on them. There is nothing to add manually — just install and run the client:</p>
-            <div className="instruction">{bootstrap || 'Download and run the Remote Access client on the target machine.'}</div>
-            <div className="row end"><button className="primary" onClick={() => setShowAdd(false)}>Got it</button></div>
+            <h2>Connect to {connectTarget.id}</h2>
+            <p className="muted">The user on {connectTarget.hostname} will see your reason and must approve before the session starts.</p>
+            <label className="field">
+              <span>Reason</span>
+              <input
+                autoFocus
+                placeholder="e.g. Helping fix the VPN client"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Access level</span>
+              <select value={scope} onChange={(e) => setScope(e.target.value as Scope)}>
+                <option value="control">View + control</option>
+                <option value="view">View only</option>
+              </select>
+            </label>
+            {error && <div className="error">{error}</div>}
+            <div className="row end">
+              <button onClick={() => setConnectTarget(null)}>Cancel</button>
+              <button className="primary" onClick={connect}>Request session</button>
+            </div>
           </div>
         </div>
       )}
+
     </>
   );
 }
+
+// Map a session state to a status pill (class + label).
+const STATE_PILL: Record<string, { cls: string; label: string }> = {
+  ACTIVE: { cls: 'ok', label: 'Live' },
+  APPROVED: { cls: 'info', label: 'Approved' },
+  REQUESTED: { cls: 'wait', label: 'Requested' },
+  CONSENT_PENDING: { cls: 'wait', label: 'Awaiting consent' },
+  DENIED: { cls: 'deny', label: 'Denied' },
+  ENDED: { cls: 'off', label: 'Ended' },
+};
+const statePill = (s: string) => STATE_PILL[s] ?? { cls: 'off', label: s };
 
 function History() {
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [open, setOpen] = useState<string>();
   const [detail, setDetail] = useState<{ events: AuditEntry[]; input: { type: string; n: number }[]; session: SessionRow }>();
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState<'all' | 'active' | 'ended' | 'denied'>('all');
+  const [limit, setLimit] = useState(10);
 
   useEffect(() => { api.sessions().then((r) => setRows(r.sessions)); }, []);
   useEffect(() => { if (open) api.audit(open).then(setDetail); else setDetail(undefined); }, [open]);
+  useEffect(() => { setLimit(10); }, [q, filter]); // reset paging when the query changes
+
+  const filtered = useMemo(() => rows.filter((r) => {
+    if (filter === 'active' && r.state !== 'ACTIVE') return false;
+    if (filter === 'ended' && r.state !== 'ENDED') return false;
+    if (filter === 'denied' && r.state !== 'DENIED') return false;
+    const hay = `${r.target} ${r.operator}`.toLowerCase();
+    return hay.includes(q.toLowerCase());
+  }), [rows, q, filter]);
+  const visible = filtered.slice(0, limit);
 
   return (
     <div className="card">
-      <div className="card-head"><div className="card-head-left"><span className="card-icon">🕑</span><div><h2>Audit history</h2><p className="muted">Every session and its consent trail</p></div></div></div>
-      <table className="data">
-        <thead><tr><th>Started</th><th>Operator</th><th>Target</th><th>Scope</th><th>State</th><th>Recording</th></tr></thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.id} className={open === r.id ? 'selected' : ''} onClick={() => setOpen(open === r.id ? undefined : r.id)}>
-              <td>{new Date(r.created_at).toLocaleString()}</td>
-              <td>{r.operator}</td>
-              <td>{r.target}</td>
-              <td><span className="chip">{r.scope}</span></td>
-              <td><span className={`status ${r.state === 'ACTIVE' ? 'online' : r.state === 'DENIED' ? 'blocked' : 'neutral'}`}>● {r.state}</span></td>
-              <td className="muted">{r.recording_url ? 'yes' : '–'}</td>
-            </tr>
-          ))}
-          {!rows.length && <tr><td colSpan={6} className="empty">No sessions yet.</td></tr>}
-        </tbody>
-      </table>
-      {detail && (
-        <div className="audit">
-          <h3>Audit trail · <span className="muted">{detail.session.id}</span></h3>
-          <ol>
-            {detail.events.map((e, i) => (
-              <li key={i}>
-                <code>{new Date(e.at).toLocaleTimeString()}</code> <b>{e.event}</b> <span className="muted">{JSON.stringify(e.detail)}</span>
-              </li>
-            ))}
-          </ol>
-          <h3>Operator input log</h3>
-          <p className="muted">{detail.input.length ? detail.input.map((i) => `${i.type}: ${i.n}`).join(' · ') : 'no input recorded'}</p>
-          {detail.session.recording_url?.split(' ').filter(Boolean).map((u) => (
-            <div key={u}>
-              <h3>Recording</h3>
-              <video src={u} controls className="recording" />
-              <div><a href={u} download>download {u.split('/').pop()}</a></div>
-            </div>
-          ))}
+      <div className="card-head">
+        <div className="card-head-left">
+          <span className="card-icon">🕑</span>
+          <div><h2>Audit history <span className="count">{rows.length}</span></h2><p className="muted">Every session and its consent trail</p></div>
+        </div>
+      </div>
+
+      <div className="toolbar-row">
+        <div className="search grow">
+          <span className="search-icon">🔍</span>
+          <input placeholder="Search by target or operator…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
+          <option value="all">All states</option>
+          <option value="active">Live</option>
+          <option value="ended">Ended</option>
+          <option value="denied">Denied</option>
+        </select>
+      </div>
+
+      {filtered.length ? (
+        <table className="data">
+          <thead><tr><th>Started</th><th>Operator</th><th>Target</th><th>Scope</th><th>State</th><th>Recording</th></tr></thead>
+          <tbody>
+            {visible.map((r) => {
+              const p = statePill(r.state);
+              const expanded = open === r.id;
+              return (
+                <Fragment key={r.id}>
+                  <tr className={expanded ? 'selected' : ''} onClick={() => setOpen(expanded ? undefined : r.id)}>
+                    <td>
+                      <div className="target-name">{timeAgo(r.created_at)}</div>
+                      <div className="muted small">{new Date(r.created_at).toLocaleString()}</div>
+                    </td>
+                    <td>
+                      <div className="op-cell">
+                        <span className="op-avatar">{(r.operator[0] ?? '?').toUpperCase()}</span>
+                        {r.operator}
+                      </div>
+                    </td>
+                    <td className="target-name">{r.target}</td>
+                    <td><span className="chip">{r.scope === 'control' ? 'Control' : 'View'}</span></td>
+                    <td><span className={`pill ${p.cls}`}>{p.label}</span></td>
+                    <td>{r.recording_url ? <span className="pill info">▶ Recorded</span> : <span className="muted">–</span>}</td>
+                  </tr>
+                  {expanded && detail && detail.session.id === r.id && (
+                    <tr className="audit-row">
+                      <td colSpan={6}>
+                        <div className="audit">
+                          <h4>Consent trail</h4>
+                          <ol className="trail">
+                            {detail.events.map((e, i) => (
+                              <li key={i}>
+                                <code>{new Date(e.at).toLocaleTimeString()}</code>
+                                <b>{e.event}</b>
+                                {e.detail && Object.keys(e.detail).length > 0 && <span className="muted">{JSON.stringify(e.detail)}</span>}
+                              </li>
+                            ))}
+                          </ol>
+                          <h4>Operator input</h4>
+                          <p className="muted">{detail.input.length ? detail.input.map((i) => `${i.type}: ${i.n}`).join(' · ') : 'No input recorded.'}</p>
+                          {detail.session.recording_url?.split(' ').filter(Boolean).map((u) => (
+                            <div key={u} className="rec-block">
+                              <h4>Recording</h4>
+                              <video src={u} controls className="recording" />
+                              <div><a href={u} download>⬇ download {u.split('/').pop()}</a></div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        <div className="empty-state slim">
+          <div className="empty-icon">🕑</div>
+          <p className="muted">{rows.length ? 'No sessions match your filters.' : 'No sessions yet. They appear here once you connect to a target.'}</p>
         </div>
       )}
+      {filtered.length > limit && (
+        <div className="show-more">
+          <button className="ghost-danger" onClick={() => setLimit((n) => n + 10)}>Show more ({filtered.length - limit} more)</button>
+        </div>
+      )}
+      {filtered.length > 0 && <div className="card-foot muted">Showing {Math.min(limit, filtered.length)} of {filtered.length} sessions</div>}
     </div>
   );
 }
@@ -422,20 +530,38 @@ function Download() {
   useEffect(() => { api.clients().then(setAvailable).catch(() => setAvailable({ mac: false, win: false })); }, []);
 
   const card = (p: 'mac' | 'win', title: string, file: string, steps: string[]) => (
-    <div className="rec-card">
-      <h3>{title} {mine === p && <span className="chip">your computer</span>}</h3>
+    <div className={`dl-card ${mine === p ? 'mine' : ''}`}>
+      <div className="dl-head">
+        <span className={`platform-mark ${p}`}>{p === 'mac' ? '' : '⊞'}</span>
+        <div>
+          <div className="dl-title">{title}</div>
+          {mine === p && <span className="dl-badge">Your computer</span>}
+        </div>
+      </div>
       {available?.[p]
-        ? <a className="primary" style={{ textDecoration: 'none', display: 'inline-block', marginTop: 8 }} href={`/api/clients/${p}`} download={file}>Download {file}</a>
-        : <button className="primary" disabled>{available ? 'Not available yet' : 'Checking…'}</button>}
-      <ol className="muted" style={{ marginTop: 10 }}>{steps.map((s) => <li key={s}>{s}</li>)}</ol>
+        ? <a className="primary dl-btn" href={`/api/clients/${p}`} download={file}>⬇ Download for {title}</a>
+        : <button className="primary dl-btn" disabled>{available ? 'Not available yet' : 'Checking…'}</button>}
+      {available?.[p] && <div className="muted small dl-file">{file}</div>}
+      <ol className="dl-steps">{steps.map((s) => <li key={s}>{s}</li>)}</ol>
     </div>
   );
 
   return (
     <>
-      <div className="card-head"><div className="card-head-left"><span className="card-icon">⬇️</span><div><h2>Download client</h2><p className="muted">Install on a computer you want to be reachable (this server is baked in).</p></div></div></div>
-      <p className="muted">It stays idle until an operator requests a session, and the person at the computer must click Allow before anything is shared.</p>
-      <div className="rec-grid" style={{ marginTop: 14 }}>
+      <div className="card">
+        <div className="card-head">
+          <div className="card-head-left">
+            <span className="card-icon">⬇️</span>
+            <div>
+              <h2>Download client</h2>
+              <p className="muted">Install on a computer you want to be reachable — this server address is baked in.</p>
+            </div>
+          </div>
+        </div>
+        <p className="muted dl-note">The app stays idle until an operator requests a session, and the person at the computer must click <b>Allow</b> before anything is shared.</p>
+      </div>
+
+      <div className="dl-grid">
         {card('mac', 'macOS', 'RemoteAccessEndpoint-mac.zip', [
           'Unzip it and move Remote Access to Applications.',
           'Right-click the app and choose Open (it is not notarized yet), then confirm.',

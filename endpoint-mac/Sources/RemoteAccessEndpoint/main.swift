@@ -96,14 +96,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if let config = EndpointConfig.load() { return run(config) }
-        log("not enrolled yet; waiting for an invite link (remoteaccess://enroll?…)")
-        // Opened by hand rather than by a link: give a launch-by-URL a moment to arrive, then ask.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            guard !self.enrolling, self.controller == nil else { return }
-            guard let link = Enroller.askForLink() else { exit(0) }
-            self.enrolling = true
-            Task { await self.enroll(link) }
-        }
+        // Not enrolled yet: wait quietly for the user to click "Connect this computer"
+        // on the invite page (a remoteaccess:// URL event) or an --enroll launch. No prompt.
+        log("not enrolled yet; waiting for an invite link (click “Connect this computer” on the invite page)")
     }
 
     @objc func handleURLEvent(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {

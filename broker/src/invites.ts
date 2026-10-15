@@ -63,42 +63,93 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 function joinPage(token: string, inv: { created_by: string; note: string | null; base_url: string }) {
   const deepLink = `remoteaccess://enroll?token=${token}&server=${encodeURIComponent(inv.base_url)}`;
   const dl = (p: Platform) => `/join/${token}/download/${p}`;
+  const macInstall = `mv ~/Downloads/RemoteAccessEndpoint.app /Applications/
+xattr -dr com.apple.quarantine /Applications/RemoteAccessEndpoint.app
+open /Applications/RemoteAccessEndpoint.app`;
+  const macRestart = `pkill -f RemoteAccessEndpoint
+open /Applications/RemoteAccessEndpoint.app`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect this computer</title>
 <style>
-:root{color-scheme:light dark;--bg:#f5f7fa;--fg:#17212b;--muted:#5a6773;--panel:#fff;--line:#c9d2dc;--accent:#1d5fd1}
-@media (prefers-color-scheme:dark){:root{--bg:#0e141a;--fg:#e6ebf0;--muted:#93a1ae;--panel:#161e26;--line:#2d3945;--accent:#6ea2ff}}
+:root{color-scheme:light dark;--bg:#f5f7fa;--fg:#17212b;--muted:#5a6773;--panel:#fff;--line:#c9d2dc;--accent:#1d5fd1;--code:#0d1b2a;--codefg:#dce7f2}
+@media (prefers-color-scheme:dark){:root{--bg:#0e141a;--fg:#e6ebf0;--muted:#93a1ae;--panel:#161e26;--line:#2d3945;--accent:#6ea2ff;--code:#05090d;--codefg:#d6e2ee}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 16px}
-main{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
-h1{font-size:24px;margin:0}p{margin:0}.muted{color:var(--muted)}
+main{max-width:580px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:24px;margin:0}h2{font-size:15px;margin:0}p{margin:0}.muted{color:var(--muted);font-size:14px}
+[hidden]{display:none!important}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
-.card h2{font-size:15px;margin:0}
-a.btn,button{font:inherit;display:inline-block;padding:10px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;text-decoration:none;cursor:pointer;align-self:flex-start}
-a.btn.alt{background:transparent;color:var(--accent)}
-input{width:100%;box-sizing:border-box;font:13px ui-monospace,Menlo,monospace;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
-ol{margin:0;padding-left:20px}
+.tabs{display:flex;gap:8px}
+.tab{flex:1;text-align:center;padding:11px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:9px;cursor:pointer;font:inherit}
+.tab.active{border-color:var(--accent);color:var(--accent);font-weight:600;background:color-mix(in srgb,var(--accent) 10%,transparent)}
+a.btn{font:inherit;display:inline-block;padding:10px 16px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;text-decoration:none;cursor:pointer;align-self:flex-start}
+pre{position:relative;background:var(--code);color:var(--codefg);border:1px solid var(--line);border-radius:8px;padding:12px 56px 12px 12px;margin:0;overflow-x:auto;font:12.5px/1.6 ui-monospace,Menlo,monospace;white-space:pre}
+.copy{position:absolute;top:7px;right:7px;font:11px system-ui;padding:3px 9px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:6px;cursor:pointer}
+input{width:100%;box-sizing:border-box;font:12.5px ui-monospace,Menlo,monospace;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+.step{display:flex;gap:10px}.num{flex:none;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:700}
 </style></head><body><main>
 <h1>Connect this computer</h1>
-<p><b>${esc(inv.created_by)}</b> sent you this link so they can request remote access to your computer${inv.note ? ` (${esc(inv.note)})` : ''}.
-Nothing is shared until you click <b>Allow</b> on a prompt that appears on your screen, and you can end a session at any time.</p>
-<div class="card"><h2>1. Download the app</h2>
-<a class="btn" id="primary" href="${dl('mac')}">Download for macOS</a>
-<a class="muted" id="other" href="${dl('win')}">Need Windows instead?</a></div>
-<div class="card"><h2>2. Open it once</h2>
-<p class="muted" id="how"></p></div>
-<div class="card"><h2>3. Connect</h2>
-<p class="muted">With the app open, click the button. Your browser will ask to open Remote Access; allow it.</p>
-<a class="btn" href="${esc(deepLink)}">Connect this computer</a>
-<p class="muted">Button does nothing? Paste this into the app when it asks for the invite:</p>
-<input readonly value="${esc(deepLink)}" onclick="this.select()"></div>
+<p class="muted"><b style="color:var(--fg)">${esc(inv.created_by)}</b> sent you this link so they can request remote access to your computer${inv.note ? ` (${esc(inv.note)})` : ''}.
+Nothing is shared until you click <b>Allow</b> on a prompt on your screen, and you can end a session any time.</p>
+
+<div class="tabs">
+  <button id="tab-new" class="tab active">First time here</button>
+  <button id="tab-have" class="tab">I already installed it</button>
+</div>
+
+<section id="pane-new" style="display:flex;flex-direction:column;gap:16px">
+  <div class="card"><div class="step"><span class="num">1</span><h2>Download the app</h2></div>
+    <a class="btn" id="primary" href="${dl('mac')}">Download for macOS</a></div>
+
+  <div class="card" id="mac-install"><div class="step"><span class="num">2</span><h2>Install &amp; open it</h2></div>
+    <p class="muted">Open <b>Terminal</b> (Spotlight → type “Terminal”) and paste these:</p>
+    <pre data-copy>${esc(macInstall)}</pre></div>
+
+  <div class="card" id="mac-perms"><div class="step"><span class="num">3</span><h2>Allow two permissions</h2></div>
+    <p class="muted">Open <b>System Settings → Privacy &amp; Security</b> and turn <b>ON</b> “Remote Access” under
+    <b>Screen &amp; System Audio Recording</b> and under <b>Accessibility</b>. Then restart the app so they take effect:</p>
+    <pre data-copy>${esc(macRestart)}</pre></div>
+
+  <div class="card" id="win-install" hidden><div class="step"><span class="num">2</span><h2>Open it</h2></div>
+    <p class="muted">Unzip the download and double-click <b>remote-access-endpoint.exe</b>. If Windows SmartScreen warns,
+    choose <b>More info → Run anyway</b>. No extra permissions are needed on Windows.</p></div>
+
+  <div class="card"><div class="step"><span class="num" id="num-connect">4</span><h2>Connect</h2></div>
+    <p class="muted">With the app running, click the button. Your browser will ask to open Remote Access — allow it.</p>
+    <a class="btn" href="${esc(deepLink)}">Connect this computer</a></div>
+</section>
+
+<section id="pane-have" hidden style="display:flex;flex-direction:column;gap:16px">
+  <div class="card"><h2>Already have Remote Access installed?</h2>
+    <p class="muted">Make sure it’s running, then connect this computer to the new invite:</p>
+    <a class="btn" href="${esc(deepLink)}">Connect this computer</a>
+    <p class="muted">Button does nothing? Paste this into the app when it asks for the invite:</p>
+    <input readonly value="${esc(deepLink)}" onclick="this.select()"></div>
+</section>
+
 <p class="muted">This link works for one computer and expires automatically.</p>
 </main>
 <script>
-var win=/Windows/i.test(navigator.userAgent);
-var p=document.getElementById('primary'),o=document.getElementById('other'),how=document.getElementById('how');
-if(win){p.textContent='Download for Windows';p.href=${JSON.stringify(dl('win'))};o.textContent='Need macOS instead?';o.href=${JSON.stringify(dl('mac'))};
-how.textContent='Unzip it and double-click remote-access-endpoint.exe. If Windows SmartScreen warns, choose More info, then Run anyway.';}
-else{how.textContent='Unzip it, move Remote Access to Applications, then right-click it and choose Open (needed the first time).';}
+(function(){
+  var win=/Windows/i.test(navigator.userAgent);
+  if(win){
+    var p=document.getElementById('primary');
+    p.textContent='Download for Windows';p.href=${JSON.stringify(dl('win'))};
+    document.getElementById('mac-install').hidden=true;
+    document.getElementById('mac-perms').hidden=true;
+    document.getElementById('win-install').hidden=false;
+    document.getElementById('num-connect').textContent='3';
+  }
+  var tn=document.getElementById('tab-new'),th=document.getElementById('tab-have');
+  var pn=document.getElementById('pane-new'),ph=document.getElementById('pane-have');
+  tn.onclick=function(){tn.classList.add('active');th.classList.remove('active');pn.hidden=false;ph.hidden=true;};
+  th.onclick=function(){th.classList.add('active');tn.classList.remove('active');ph.hidden=false;pn.hidden=true;};
+  document.querySelectorAll('pre[data-copy]').forEach(function(pre){
+    var text=pre.textContent;
+    var b=document.createElement('button');b.className='copy';b.textContent='Copy';
+    b.onclick=function(){navigator.clipboard.writeText(text.trim()).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy';},1200);});};
+    pre.appendChild(b);
+  });
+})();
 </script></body></html>`;
 }
 

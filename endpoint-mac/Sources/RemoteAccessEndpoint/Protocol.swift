@@ -63,6 +63,7 @@ enum BrokerMessage {
     case token(SessionToken)
     case scope(sessionId: String, Scope)
     case end(sessionId: String, reason: String)
+    case revoked(reason: String)
 
     static func parse(_ text: String) -> BrokerMessage? {
         guard let obj = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
@@ -77,6 +78,8 @@ enum BrokerMessage {
             return .token(.init(sessionId: s("sessionId"), livekitUrl: s("livekitUrl"), token: s("token"), room: s("room")))
         case "session.scope":
             return .scope(sessionId: s("sessionId"), Scope(rawValue: s("scope")) ?? .view)
+        case "revoked":
+            return .revoked(reason: s("reason"))
         case "session.end":
             return .end(sessionId: s("sessionId"), reason: s("reason"))
         default: return nil

@@ -76,6 +76,12 @@ export function attachEndpointServer(wss: WebSocketServer) {
         void authenticate(msg).then((ok) => {
           if (!ok || ws.readyState !== WebSocket.OPEN) {
             console.warn(`[endpoint] rejected hello from ${req.socket.remoteAddress} (${String(msg.targetId ?? '') || 'no id'})`);
+            // An enrolled client whose device credential is rejected (revoked / removed)
+            // is told to forget it, so it stops retrying and can re-enroll with a new invite.
+            if (typeof msg.deviceToken === 'string' && msg.deviceToken) {
+              try { ws.send(JSON.stringify({ type: 'revoked', reason: 'credential no longer valid' })); } catch { /* ignore */ }
+              return void ws.close(4003, 'revoked');
+            }
             return void ws.close(4001, 'unauthorized');
           }
           clearTimeout(helloTimer);
@@ -137,9 +143,13 @@ async function authenticate(msg: Msg): Promise<boolean> {
   return secretOk(String(msg.secret ?? ''));
 }
 
-/** Close a target's control link (used when its device credential is revoked). */
+/** Close a target's control link because its device credential was revoked. Tell the
+ *  client first (so it clears its saved enrollment), then close with the revoked code. */
 export function disconnectEndpoint(targetId: string, reason: string) {
-  conns.get(targetId)?.ws.close(4001, reason);
+  const c = conns.get(targetId);
+  if (!c) return;
+  try { c.ws.send(JSON.stringify({ type: 'revoked', reason })); } catch { /* ignore */ }
+  c.ws.close(4003, reason);
 }
 
 export function markBusy(targetId: string, sessionId: string | undefined) {
