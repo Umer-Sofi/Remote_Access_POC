@@ -13,8 +13,19 @@ const NAV: { id: View; label: string; icon: string }[] = [
   { id: 'history', label: 'Audit history', icon: '🕑' },
   { id: 'recordings', label: 'Session recordings', icon: '🎥' },
   { id: 'smoke', label: 'SFU smoke test', icon: '🛡️' },
-  { id: 'settings', label: 'Settings', icon: '⚙️' },
 ];
+
+type Theme = 'light' | 'dark';
+function useTheme(): [Theme, () => void] {
+  const [theme, setTheme] = useState<Theme>(() => {
+    try { return (localStorage.getItem('theme') as Theme) || 'light'; } catch { return 'light'; }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('theme', theme); } catch { /* private mode */ }
+  }, [theme]);
+  return [theme, () => setTheme((t) => (t === 'light' ? 'dark' : 'light'))];
+}
 
 const PLATFORM = {
   mac: { label: 'macOS', icon: '', cls: 'mac' },
@@ -34,6 +45,8 @@ export function App() {
   const [user, setUser] = useState<string | null | undefined>(undefined);
   const [view, setView] = useState<View>('targets');
   const [sessionId, setSessionId] = useState<string>();
+  const [theme, toggleTheme] = useTheme();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     api.me().then((u) => setUser(u.username)).catch(() => setUser(null));
@@ -44,8 +57,8 @@ export function App() {
   if (sessionId) return <Session sessionId={sessionId} onExit={() => setSessionId(undefined)} />;
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
+    <div className="layout">
+      <header className="topbar">
         <div className="brand">
           <div className="brand-mark">🔗</div>
           <div>
@@ -53,45 +66,53 @@ export function App() {
             <div className="brand-sub">Secure Remote Access</div>
           </div>
         </div>
-        <nav className="side-nav">
-          {NAV.map((n) => (
-            <button key={n.id} className={view === n.id ? 'active' : ''} onClick={() => setView(n.id)}>
-              <span className="nav-icon">{n.icon}</span>
-              {n.label}
-            </button>
-          ))}
-        </nav>
-        <div className="sys-status">
-          <span className="dot ok" />
-          <div>
-            <div className="sys-title">System Online</div>
-            <div className="sys-sub">All services healthy</div>
-          </div>
-        </div>
-      </aside>
-
-      <div className="main">
-        <header className="topbar">
-          <div className="search">
-            <span className="search-icon">🔍</span>
-            <input placeholder="Search targets by name, host, user…" disabled />
-            <span className="kbd">⌘ K</span>
-          </div>
-          <span className="spacer" />
-          <button className="icon-btn" title="Notifications">🔔</button>
-          <div className="user-chip">
+        <span className="spacer" />
+        <button className="icon-btn" title="Toggle theme" onClick={toggleTheme}>{theme === 'light' ? '🌙' : '☀️'}</button>
+        <div className="user-menu">
+          <button className="user-chip" onClick={() => setMenuOpen((o) => !o)}>
             <span className="avatar">{user[0]?.toUpperCase()}</span>
             <span>{user}</span>
-            <button className="linkish" onClick={() => api.logout().then(() => setUser(null))}>Log out</button>
-          </div>
-        </header>
+            <span className="caret">▾</span>
+          </button>
+          {menuOpen && (
+            <>
+              <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
+              <div className="menu">
+                <button onClick={() => { setView('settings'); setMenuOpen(false); }}>⚙️&nbsp; Settings</button>
+                <button className="danger" onClick={() => api.logout().then(() => setUser(null))}>⎋&nbsp; Log out</button>
+              </div>
+            </>
+          )}
+        </div>
+      </header>
 
-        <div className="content">
-          {view === 'targets' && <Targets onStart={setSessionId} />}
-          {view === 'history' && <History />}
-          {view === 'recordings' && <Recordings />}
-          {view === 'smoke' && <div className="card"><Smoke /></div>}
-          {view === 'settings' && <Settings user={user} />}
+      <div className="body">
+        <aside className="sidebar">
+          <nav className="side-nav">
+            {NAV.map((n) => (
+              <button key={n.id} className={view === n.id ? 'active' : ''} onClick={() => setView(n.id)}>
+                <span className="nav-icon">{n.icon}</span>
+                {n.label}
+              </button>
+            ))}
+          </nav>
+          <div className="sys-status">
+            <span className="dot ok" />
+            <div>
+              <div className="sys-title">System Online</div>
+              <div className="sys-sub">All services healthy</div>
+            </div>
+          </div>
+        </aside>
+
+        <div className="main">
+          <div className="content">
+            {view === 'targets' && <Targets onStart={setSessionId} user={user} />}
+            {view === 'history' && <History />}
+            {view === 'recordings' && <Recordings />}
+            {view === 'smoke' && <div className="card"><Smoke /></div>}
+            {view === 'settings' && <Settings user={user} />}
+          </div>
         </div>
       </div>
     </div>
@@ -129,36 +150,40 @@ function Login({ onLogin }: { onLogin: (u: string) => void }) {
   );
 }
 
-const FEATURES = [
-  { icon: '🔒', title: 'End-to-end encryption' },
-  { icon: '🛡️', title: 'Audit every session' },
-  { icon: '🖥️', title: 'Cross-platform access' },
-  { icon: '👥', title: 'Role-based permissions' },
-];
+interface Stats { online: number; inSession: number; sessions: number; recordings: number }
 
-function Hero() {
+function WelcomeBanner({ user, stats }: { user: string; stats: Stats }) {
+  const date = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  const name = user.charAt(0).toUpperCase() + user.slice(1);
+  const cards = [
+    { icon: '🖥️', label: 'Targets online', value: stats.online, sub: 'ready to connect' },
+    { icon: '🟢', label: 'In session', value: stats.inSession, sub: 'active now' },
+    { icon: '🗂️', label: 'Total sessions', value: stats.sessions, sub: 'all time' },
+    { icon: '🎥', label: 'Recordings', value: stats.recordings, sub: 'saved server-side' },
+  ];
   return (
-    <div className="hero card">
-      <div className="hero-text">
-        <div className="hero-eyebrow">SECURE · CONNECT · WORK · ANYWHERE</div>
-        <h1 className="hero-title">Remote <span>Access</span></h1>
-        <p className="hero-sub">Connect to your devices securely from anywhere.</p>
-        <div className="feature-row">
-          {FEATURES.map((f) => (
-            <div className="feature" key={f.title}>
-              <span className="feature-icon">{f.icon}</span>
-              <span>{f.title}</span>
+    <div className="welcome">
+      <div className="welcome-date">{date}</div>
+      <h1 className="welcome-title">Welcome {name}!</h1>
+      <p className="welcome-sub">Connect to your devices securely from anywhere — every session consented, recorded and audited.</p>
+      <div className="stat-row">
+        {cards.map((c) => (
+          <div className="stat" key={c.label}>
+            <div className="stat-icon">{c.icon}</div>
+            <div>
+              <div className="stat-label">{c.label}</div>
+              <div className="stat-value">{c.value}<span className="stat-sub"> {c.sub}</span></div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-      <div className="hero-art">💻</div>
     </div>
   );
 }
 
-function Targets({ onStart }: { onStart: (id: string) => void }) {
+function Targets({ onStart, user }: { onStart: (id: string) => void; user: string }) {
   const [targets, setTargets] = useState<Target[]>([]);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [bootstrap, setBootstrap] = useState('');
   const [reason, setReason] = useState('');
   const [scope, setScope] = useState<Scope>('control');
@@ -170,11 +195,21 @@ function Targets({ onStart }: { onStart: (id: string) => void }) {
 
   // "Connectable targets" = endpoints holding a live WSS link right now (spec §8.1).
   useEffect(() => {
-    const load = () => api.targets().then((r) => { setTargets(r.targets); setBootstrap(r.bootstrap); }).catch(() => {});
+    const load = () => {
+      api.targets().then((r) => { setTargets(r.targets); setBootstrap(r.bootstrap); }).catch(() => {});
+      api.sessions().then((r) => setSessions(r.sessions)).catch(() => {});
+    };
     load();
     const id = setInterval(load, 2000);
     return () => clearInterval(id);
   }, []);
+
+  const stats: Stats = {
+    online: targets.filter((t) => !t.busy).length,
+    inSession: targets.filter((t) => t.busy).length,
+    sessions: sessions.length,
+    recordings: sessions.filter((s) => s.recording_url).length,
+  };
 
   const connect = async (t: Target) => {
     setError(undefined);
@@ -195,7 +230,7 @@ function Targets({ onStart }: { onStart: (id: string) => void }) {
 
   return (
     <>
-      <Hero />
+      <WelcomeBanner user={user} stats={stats} />
       <div className="card">
         <div className="card-head">
           <div className="card-head-left">
