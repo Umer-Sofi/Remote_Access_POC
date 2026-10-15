@@ -37,6 +37,10 @@ services:
       TARGET_ALLOWLIST: "*"
       RECORDING_MODE: none
       REQUIRE_RECORDING: "false"
+      PUBLIC_URL: ${PUBLIC_URL:-}          # https://<ngrok domain> — baked into invite links
+      CLIENTS_DIR: /clients                # packaged endpoint zips served by /join/<token>/download
+    volumes:
+      - ./clients:/clients:ro
     ports:
       - "127.0.0.1:8081:8080"   # local only; the internet reaches it via the tunnel
     depends_on:
