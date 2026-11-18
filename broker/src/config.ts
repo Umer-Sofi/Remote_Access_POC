@@ -35,6 +35,20 @@ export const config = {
   clientsDir: process.env.CLIENTS_DIR ?? '/clients', // prebuilt endpoint zips (contain ENDPOINT_SECRET)
   consoleDir: process.env.CONSOLE_DIR ?? new URL('../../console/dist', import.meta.url).pathname,
 
+  // Device inventory (Axonius). off = feature disabled (default); mock = built-in sample
+  // data; axonius = the real tenant (not implemented yet). Isolated behind this flag so the
+  // existing app is unchanged until it is turned on.
+  inventory: {
+    mode: (process.env.INVENTORY_MODE ?? 'off') as 'off' | 'mock' | 'axonius',
+    syncMinutes: Number(process.env.INVENTORY_SYNC_MINUTES ?? 15),
+    axonius: {
+      url: process.env.AXONIUS_URL,
+      apiKey: process.env.AXONIUS_API_KEY,
+      apiSecret: process.env.AXONIUS_API_SECRET,
+      savedQuery: process.env.AXONIUS_SAVED_QUERY ?? 'workstations',
+    },
+  },
+
   // Timings (seconds). Consent must be answered on the endpoint within 30 s; the
   // broker waits a bit longer so the endpoint's own "timeout = deny" wins normally.
   consentTimeoutS: 40,

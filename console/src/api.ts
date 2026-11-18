@@ -8,10 +8,17 @@ export interface Target {
   id: string;
   platform: 'mac' | 'win';
   hostname: string;
-  version: string;
+  version: string | null;
   busy: boolean;
   connectedAt?: string;
   posture: { allowed: boolean; reason?: string };
+  // Present only when device inventory (Axonius) is enabled on the broker:
+  axonId?: string | null;
+  os?: string | null;
+  tags?: string[];
+  lastSeen?: string | null;
+  status?: 'online' | 'known';
+  unmanaged?: boolean;
 }
 
 export interface SessionStatus {

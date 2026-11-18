@@ -24,6 +24,7 @@ const envFile = (() => { try { return readFileSync(new URL('../../.env', import.
 const secret = process.env.ENDPOINT_SECRET ?? /^ENDPOINT_SECRET=(.*)$/m.exec(envFile)?.[1] ?? '';
 const brokerUrl = arg('broker', 'ws://localhost:8080/ws/endpoint')!;
 const targetId = arg('target', 'fake-1')!;
+const host = arg('hostname', `${hostname()} (fake)`)!; // override to match an inventory device
 const deny = flag('deny');
 const seconds = Number(arg('seconds', '0')); // auto-end after N seconds (0 = never)
 
@@ -35,7 +36,7 @@ let currentSession: string | undefined;
 const ws = new WebSocket(brokerUrl);
 const send = (m: object) => ws.send(JSON.stringify(m));
 
-ws.on('open', () => send({ type: 'hello', targetId, platform: 'mac', hostname: `${hostname()} (fake)`, secret, version: 'fake-0.1' }));
+ws.on('open', () => send({ type: 'hello', targetId, platform: 'mac', hostname: host, secret, version: 'fake-0.1' }));
 ws.on('close', (code, reason) => { console.log(`broker link closed ${code} ${reason}`); void shutdown(); });
 ws.on('message', async (raw) => {
   const m = JSON.parse(raw.toString());

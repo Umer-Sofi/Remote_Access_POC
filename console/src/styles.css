@@ -244,6 +244,11 @@ table.data tr.selected { background: var(--accent-soft); }
 .status.busy { color: var(--warn); background: #fbf1dc; }
 .status.blocked { color: var(--danger); background: var(--danger-soft); }
 .status.neutral { color: var(--muted); background: var(--chip-bg); }
+.status.known { color: var(--muted); background: var(--chip-bg); }
+
+/* Axonius inventory tag chips */
+.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; margin: 2px 4px 2px 0; background: var(--chip-bg); color: var(--chip-ink); font-family: ui-monospace, Menlo, monospace; }
+.tag-ok { background: var(--ok-soft); color: var(--ok); }
 
 .connect { background: var(--btn); color: var(--btn-ink); border: none; border-radius: 9px; padding: 8px 14px; font-weight: 600; }
 .connect:hover:not(:disabled) { filter: brightness(1.08); }

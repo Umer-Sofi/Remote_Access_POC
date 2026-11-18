@@ -11,6 +11,9 @@ import { config } from './config.js';
 import { waitForDb } from './db.js';
 import { registerInviteRoutes } from './invites.js';
 import { ensureSchema } from './schema.js';
+import { inventoryEnabled, startInventorySync } from './inventory/sync.js';
+import { listDevices } from './inventory/store.js';
+import { matchEndpoint } from './inventory/matcher.js';
 import { attachEndpointServer, listEndpoints } from './endpoints.js';
 import { smokeRoom, verifyWebhook } from './livekit.js';
 import { providers, type Identity } from './providers/index.js';
@@ -72,17 +75,66 @@ app.get('/api/me', requireOperator, (req, res) => {
 });
 
 // ---- targets + sessions ----------------------------------------------------------
+const osToPlatform = (os: string | null): 'mac' | 'win' => (os && /mac/i.test(os) ? 'mac' : 'win');
+
 app.get('/api/targets', requireOperator, async (_req, res) => {
-  const targets = await Promise.all(listEndpoints().map(async (e) => ({
-    id: e.targetId,
-    platform: e.platform,
-    hostname: e.hostname,
-    version: e.version,
-    connectedAt: e.connectedAt,
-    busy: !!e.sessionId,
-    posture: await providers.posture.check(e.targetId),
-  })));
-  res.json({ targets, bootstrap: providers.bootstrap.instructions() });
+  // Without inventory: the list is exactly the live endpoints (original behaviour).
+  if (!inventoryEnabled()) {
+    const targets = await Promise.all(listEndpoints().map(async (e) => ({
+      id: e.targetId,
+      platform: e.platform,
+      hostname: e.hostname,
+      version: e.version,
+      connectedAt: e.connectedAt,
+      busy: !!e.sessionId,
+      posture: await providers.posture.check(e.targetId),
+    })));
+    return void res.json({ targets, bootstrap: providers.bootstrap.instructions() });
+  }
+
+  // With inventory: show every inventory device, marked Online (endpoint running + matched)
+  // or Known (in inventory, no endpoint). An online endpoint with no inventory match is
+  // listed as unmanaged. Matching is by hostname today; serial/MAC once clients send them.
+  const live = listEndpoints();
+  const inventory = await listDevices();
+  const matchedAxon = new Set<string>();
+  const matchedLive = new Set<string>();
+  const targets = [];
+
+  for (const e of live) {
+    const dev = await matchEndpoint({ hostname: e.hostname });
+    if (!dev) continue;
+    matchedAxon.add(dev.axonId);
+    matchedLive.add(e.targetId);
+    targets.push({
+      id: e.targetId, axonId: dev.axonId, hostname: dev.hostname ?? e.hostname, os: dev.os,
+      platform: e.platform, version: e.version, tags: dev.tags, lastSeen: dev.lastSeen,
+      status: 'online', busy: !!e.sessionId, posture: await providers.posture.check(e.targetId),
+    });
+  }
+  for (const d of inventory) {
+    if (matchedAxon.has(d.axonId)) continue;
+    targets.push({
+      id: d.axonId, axonId: d.axonId, hostname: d.hostname, os: d.os,
+      platform: osToPlatform(d.os), version: null, tags: d.tags, lastSeen: d.lastSeen,
+      status: 'known', busy: false, posture: { allowed: false, reason: 'endpoint not running' },
+    });
+  }
+  for (const e of live) {
+    if (matchedLive.has(e.targetId)) continue;
+    targets.push({
+      id: e.targetId, axonId: null, hostname: e.hostname, os: null,
+      platform: e.platform, version: e.version, tags: [], lastSeen: null,
+      status: 'online', busy: !!e.sessionId, unmanaged: true,
+      posture: await providers.posture.check(e.targetId),
+    });
+  }
+  res.json({ targets, bootstrap: providers.bootstrap.instructions(), inventory: true });
+});
+
+// Synced Axonius inventory (read-only view for the console). Empty when INVENTORY_MODE=off.
+app.get('/api/inventory', requireOperator, async (_req, res) => {
+  res.json({ devices: await listDevices() });
 });
 
 app.post('/api/sessions', requireOperator, async (req, res) => {
@@ -187,6 +239,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 // ---- boot --------------------------------------------------------------------------
 await waitForDb();
 await ensureSchema();
+startInventorySync(); // background inventory refresh (no-op unless INVENTORY_MODE is set)
 await recoverAfterRestart();
 
 const server = createServer(app);

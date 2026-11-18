@@ -243,6 +243,8 @@ function Targets({ onStart, user }: { onStart: (id: string) => void; user: strin
     return hay.includes(q.toLowerCase());
   }), [targets, q, platform, status]);
 
+  const hasInventory = targets.some((t) => !!t.status); // broker merged Axonius inventory in
+
   return (
     <>
       <WelcomeBanner user={user} stats={stats} />
@@ -279,34 +281,54 @@ function Targets({ onStart, user }: { onStart: (id: string) => void; user: strin
         {filtered.length ? (
           <>
             <table className="data">
-              <thead><tr><th>Target</th><th>Platform</th><th>Host</th><th>Status</th><th>Last seen</th><th>Actions</th></tr></thead>
+              <thead><tr>
+                <th>Target</th><th>Platform</th><th>Host</th>
+                {hasInventory && <th>Tags</th>}
+                <th>Status</th><th>Last seen</th><th>Actions</th>
+              </tr></thead>
               <tbody>
                 {filtered.map((t) => {
                   const p = PLATFORM[t.platform];
-                  const blocked = !t.posture.allowed;
+                  const known = t.status === 'known';                     // in inventory, no live endpoint
+                  const tagAllowed = !t.tags?.length || t.tags.includes('remote-access-allowed');
+                  const blocked = !t.posture.allowed || !tagAllowed;
+                  const connectable = !known && !t.busy && !blocked;
+                  const name = hasInventory ? (t.hostname || t.id) : t.id;
+                  const sub = hasInventory ? t.os : t.version;
                   return (
                     <tr key={t.id}>
                       <td>
                         <div className="target-cell">
                           <span className={`platform-mark ${p.cls}`}>{p.icon || p.label[0]}</span>
                           <div>
-                            <div className="target-name">{t.id}</div>
-                            <div className="muted small">{t.version}</div>
+                            <div className="target-name">{name}</div>
+                            <div className="muted small">{sub}{t.unmanaged ? ' · not in inventory' : ''}</div>
                           </div>
                         </div>
                       </td>
                       <td><span className={`chip ${p.cls}`}>{p.label}</span></td>
                       <td className="muted">{t.hostname}</td>
+                      {hasInventory && (
+                        <td>
+                          {t.tags?.length
+                            ? t.tags.map((tag) => <span key={tag} className={`tag ${tag === 'remote-access-allowed' ? 'tag-ok' : ''}`}>{tag}</span>)
+                            : <span className="muted">–</span>}
+                        </td>
+                      )}
                       <td>
-                        {blocked
-                          ? <span className="status blocked">● Blocked</span>
+                        {known
+                          ? <span className="status known">● Known</span>
                           : t.busy
                             ? <span className="status busy">● In session</span>
-                            : <span className="status online">● Online</span>}
+                            : !tagAllowed
+                              ? <span className="status blocked" title="device is not tagged remote-access-allowed">● Not allowed</span>
+                              : blocked
+                                ? <span className="status blocked">● Blocked</span>
+                                : <span className="status online">● Online</span>}
                       </td>
-                      <td className="muted">{timeAgo(t.connectedAt)}</td>
+                      <td className="muted">{timeAgo(t.lastSeen ?? t.connectedAt)}</td>
                       <td>
-                        <button className="connect" disabled={t.busy || blocked} onClick={() => openConnect(t)}>🖥️ Connect</button>
+                        <button className="connect" disabled={!connectable} onClick={() => openConnect(t)}>🖥️ Connect</button>
                       </td>
                     </tr>
                   );

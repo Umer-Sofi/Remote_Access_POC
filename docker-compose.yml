@@ -86,6 +86,7 @@ services:
       EGRESS_OUT_DIR: /out                            # path as the egress container sees it
       PUBLIC_URL: ${PUBLIC_URL:-}                     # address targets use to reach the broker (invite links)
       CLIENTS_DIR: /clients                           # packaged endpoint zips for the console's download page
+      INVENTORY_MODE: ${INVENTORY_MODE:-off}          # off | mock | axonius (device inventory; default off)
     volumes:
       - ./recordings:/recordings:ro
       - ./clients:/clients:ro
